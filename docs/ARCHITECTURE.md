@@ -482,7 +482,8 @@ SDK `openai`, `AsyncOpenAI(api_key, base_url=LLM_BASE_URL or None)`, Chat Comple
   "highlights": [{"sentiment": "positive|negative|warning|neutral", "text": "..."}],
   "metrics": [{"label": "Выручка", "result_id": "r1", "row": 0, "value_column": "value",
                "change_pct_column": "change_pct", "unit": "currency|number|percent|hours|liters|kg"}],
-  "table": {"result_id": "r2", "title": "...", "columns": ["month", "revenue"]} ,
+  "table": {"result_id": "r2", "title": "...", "columns": ["month", "revenue"],
+            "column_labels": [{"column": "revenue", "label": "Выручка", "unit": "currency"}]},
   "chart": {"result_id": "r1", "type": "line|bar|area|pie", "title": "...", "x": "period",
             "series": [{"column": "value", "label": "Выручка", "unit": "currency"}]},
   "limitations": "что не удалось/допущения, или null",
@@ -494,7 +495,7 @@ SDK `openai`, `AsyncOpenAI(api_key, base_url=LLM_BASE_URL or None)`, Chat Comple
 
 Цикл и лимиты:
 - Одна итерация = один вызов LLM. Стоп при: `submit_answer`; `AGENT_MAX_ITERATIONS`;
-  `AGENT_MAX_TOOL_CALLS`; `AGENT_MAX_SQL_RETRIES` подряд неудачных SQL; `AGENT_TIMEOUT_SECONDS`.
+  `AGENT_MAX_TOOL_CALLS` (после исчерпания — одна попытка оформить ответ из собранных данных); `AGENT_MAX_SQL_RETRIES` подряд неудачных SQL; `AGENT_TIMEOUT_SECONDS`.
   При лимите — `status: limit_reached` и честный текст «не удалось завершить анализ».
 - Если модель ответила текстом без `submit_answer` — одно напоминание (в пределах лимитов), затем
   текст становится ответом `answered` без структурных блоков.

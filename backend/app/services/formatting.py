@@ -36,7 +36,8 @@ def format_value(value: float | int | None, unit: str | None, lang: str = "ru", 
         return "—"
     number = float(value)
     if unit == "percent":
-        return f"{_group(number, 1, lang)} %" if lang == "ru" else f"{_group(number, 1, lang)}%"
+        digits = 2 if 0 < abs(number) < 1 else 1
+        return f"{_group(number, digits, lang)} %" if lang == "ru" else f"{_group(number, digits, lang)}%"
     if unit == "currency":
         scaled, suffix = _compact(number, lang)
         decimals = _decimals_for(scaled) if suffix else 0

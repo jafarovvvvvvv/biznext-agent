@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     llm_fallbacks: str = "auto"
 
     agent_max_iterations: int = 10
-    agent_max_tool_calls: int = 16
+    agent_max_tool_calls: int = 30
     agent_max_sql_retries: int = 3
     agent_max_rows_to_llm: int = 60
     agent_max_result_chars_to_llm: int = 12000

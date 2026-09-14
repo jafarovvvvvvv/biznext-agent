@@ -62,19 +62,62 @@ docker compose up -d --build
 ## Running
 
 ```bash
-docker compose ps                         # статус сервисов
-docker compose logs -f backend            # логи агента: вопросы, SQL, валидация, время
+docker compose ps                         # статус: db, backend, web (seed — одноразовый, Exited 0)
+docker compose logs -f backend            # логи агента: вопрос, SQL, результат валидации, строки, время
 docker compose restart backend            # перезапуск после смены .env
-SEED_FORCE=1 docker compose up seed       # пересоздать демо-данные (конец периода = сегодня)
-docker compose down                       # остановить (данные сохраняются в томе pgdata)
+SEED_FORCE=1 docker compose run --rm seed # пересоздать демо-данные (конец периода = сегодня)
+docker compose down                       # остановить (данные остаются в томе pgdata)
 ```
 
-Тесты backend:
+Демо-данные строятся относительно даты генерации. Если стенд долго не пересоздавался, «прошлый месяц»
+в вопросах уедет от данных — выполните `SEED_FORCE=1 docker compose run --rm seed`.
+
+### Домашний сервер
+
+Локальные настройки хоста — в `docker-compose.override.yml` (не в git). Пример для сервера без IPv6
+и с нестабильным DNS в контейнерах:
+
+```yaml
+services:
+  db:
+    ports: ["127.0.0.1:55432:5432"]      # только localhost, для диагностики
+  backend:
+    ports: ["127.0.0.1:18000:8000"]      # только localhost, для dev-туннеля
+    dns: [1.1.1.1, 8.8.8.8]
+    sysctls: [net.ipv6.conf.all.disable_ipv6=1]
+```
+
+Все сервисы — `restart: unless-stopped`, стек переживает перезагрузку сервера.
+
+### Тесты
+
+Unit-тесты не требуют БД и LLM:
 
 ```bash
-docker compose exec backend python -m pytest -m "not integration and not live_llm"   # unit
-docker compose exec backend python -m pytest -m integration                          # против живой БД
-docker compose exec backend python -m pytest -m live_llm                             # реальные вопросы к LLM (платно)
+cd backend && python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest -m "not integration and not live_llm"
+```
+
+Интеграционные тесты — внутри контейнера против живой БД (права `agent_readonly` в обход валидатора,
+все метрики из `semantic/metrics.yaml`, дашборд, хранилище):
+
+```bash
+docker compose run --rm --no-deps -u root   -v "$PWD/backend/tests:/app/tests:ro" -v "$PWD/backend/requirements-dev.txt:/app/requirements-dev.txt:ro"   -v "$PWD/backend/pyproject.toml:/app/pyproject.toml:ro"   backend sh -c "pip install -q -r requirements-dev.txt && python -m pytest -m 'not live_llm'"
+```
+
+Frontend: `cd frontend && npm ci && npm run lint && npm test && npm run build`.
+
+Проверка сюжетов данных и прав БД напрямую:
+
+```bash
+docker compose exec -T db psql -U agent_readonly -d biznext -f - < database/checks/verify_permissions.sql
+docker compose exec -T db psql -U agent_readonly -d biznext -f - < database/checks/verify_stories.sql
+```
+
+Прогон demo-сценариев через API (реальные вызовы LLM, платно):
+
+```bash
+docker compose cp scripts/run_demo_scenarios.py backend:/tmp/ && docker compose exec backend python /tmp/run_demo_scenarios.py http://web /tmp/demo_report.json
 ```
 
 ### Выбор LLM
@@ -84,10 +127,10 @@ docker compose exec backend python -m pytest -m live_llm                        
 | Провайдер | `.env` |
 |---|---|
 | Anthropic (по умолчанию) | `LLM_PROVIDER=anthropic`, `LLM_MODEL=claude-opus-5`, `LLM_API_KEY=...` |
-| OpenAI | `LLM_PROVIDER=openai`, `LLM_MODEL=<model>`, `LLM_API_KEY=...` |
+| OpenAI (Responses API) | `LLM_PROVIDER=openai`, `LLM_MODEL=<model>`, `LLM_API_KEY=...` |
 | OpenRouter / vLLM / Ollama (локальная модель) | `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL=http://host:port/v1`, `LLM_MODEL=<model>` |
 
-Дашборд, KPI и источники данных работают и без LLM; без ключа недоступны только ответы агента
+`LLM_EFFORT` управляет глубиной рассуждений модели (скорость ↔ качество). Дашборд, KPI и источники данных работают и без LLM; без ключа недоступны только ответы агента
 (и AI-формулировки инсайтов — вместо них показываются детерминированные).
 
 ## Demo

@@ -87,7 +87,7 @@ function ConnectedSource({ source }: { source: DataSource }) {
         </div>
       </div>
       {details && (
-        <div className="mt-6 grid grid-cols-2 gap-5 border-t border-line pt-5 md:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-6 grid grid-cols-2 gap-5 border-t border-line pt-5 md:grid-cols-3 xl:grid-cols-6">
           <Detail label={t("sources.database")} value={details.database} />
           <Detail label={t("sources.schema")} value={details.schema} />
           <Detail label={t("sources.tables")} value={details.tables} />

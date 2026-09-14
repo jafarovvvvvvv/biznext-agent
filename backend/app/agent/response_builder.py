@@ -85,8 +85,9 @@ def build_table(spec: dict[str, Any] | None, results: ResultRegistry, issues: Bu
     dropped = [c for c in (spec.get("columns") or []) if c not in available]
     if dropped:
         issues.append(f"table: unknown columns {dropped}")
-    units = {u.get("column"): u.get("unit") for u in (spec.get("column_units") or []) if isinstance(u, dict)}
-    columns = [{"key": c, "label": column_label(result, c, lang), "type": _column_type(result, c, units.get(c))}
+    meta = {m.get("column"): m for m in (spec.get("column_labels") or []) if isinstance(m, dict)}
+    columns = [{"key": c, "label": str((meta.get(c) or {}).get("label") or column_label(result, c, lang)),
+                "type": _column_type(result, c, (meta.get(c) or {}).get("unit"))}
                for c in wanted]
     rows = [{c: row.get(c) for c in wanted} for row in result.rows[:MAX_TABLE_ROWS]]
     return {

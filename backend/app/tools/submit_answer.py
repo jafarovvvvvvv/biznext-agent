@@ -47,16 +47,18 @@ SUBMIT_ANSWER_SCHEMA: dict[str, Any] = {
                 {"type": "null"},
                 {
                     "type": "object", "additionalProperties": False,
-                    "required": ["result_id", "title", "columns", "column_units"],
+                    "required": ["result_id", "title", "columns", "column_labels"],
                     "properties": {
                         "result_id": {"type": "string"},
                         "title": {"type": "string"},
                         "columns": {"type": "array", "items": {"type": "string"},
                                     "description": "Columns to show in order; empty array = all"},
-                        "column_units": {
+                        "column_labels": {
                             "type": "array",
-                            "items": {"type": "object", "additionalProperties": False, "required": ["column", "unit"],
-                                      "properties": {"column": {"type": "string"}, "unit": {"type": "string", "enum": UNITS}}},
+                            "description": "Human-readable label and unit for each shown column",
+                            "items": {"type": "object", "additionalProperties": False, "required": ["column", "label", "unit"],
+                                      "properties": {"column": {"type": "string"}, "label": {"type": "string"},
+                                                     "unit": {"type": "string", "enum": UNITS}}},
                         },
                     },
                 },

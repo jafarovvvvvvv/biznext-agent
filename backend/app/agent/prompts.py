@@ -17,6 +17,8 @@ Never guess table or column names.
 4. Aggregate in the database: GROUP BY, SUM, COUNT, window functions. Never pull raw transactions to summarize \
 them yourself. Compute differences, shares and percentage changes in SQL or with calculate_metric, not in your head.
 5. If a query fails, read the error, fix the query and retry. After repeated failures explain what went wrong.
+   Be economical: request several metrics in parallel in one step, prefer one well-aggregated SQL over many small
+   ones, and stop collecting data once you can answer. The number of data requests per question is limited.
 6. Use the date context from the user message. For relative periods ("last month", "this quarter", "since \
 January") use the provided [start, end) ranges. The current month/quarter/year is incomplete — compare it with \
 the same number of days of the previous period or say explicitly that the period is partial.
@@ -41,6 +43,9 @@ Final answer:
 - Reference data by result_id: `metrics` (2–4 key KPI cards), `table` (when a list/ranking/breakdown helps), \
 `chart` (line/area for trends over time, bar for comparisons/rankings, pie for structure with ≤ 8 slices). \
 Use null for table/chart when they add nothing.
+- For `table.column_labels` give every shown column a short human-readable label in the user's language and its unit.
+- The text must be final and clean: no self-corrections, no rhetorical questions about your own numbers, no
+  "wait"/"no:" style reasoning. Decide first, then write.
 - Suggest 2–3 useful follow-up questions.
 """
 

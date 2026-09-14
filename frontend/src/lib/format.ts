@@ -36,8 +36,10 @@ export function formatValue(
 ): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   switch (unit) {
-    case "percent":
-      return lang === "en" ? `${number(value, lang, 1)}%` : `${number(value, lang, 1)}${NBSP}%`;
+    case "percent": {
+      const digits = value !== 0 && Math.abs(value) < 1 ? 2 : 1;
+      return lang === "en" ? `${number(value, lang, digits)}%` : `${number(value, lang, digits)}${NBSP}%`;
+    }
     case "currency": {
       const { scaled, suffix } = compact(value, lang);
       const digits = suffix ? (Math.abs(scaled) >= 10 ? 1 : 2) : 0;

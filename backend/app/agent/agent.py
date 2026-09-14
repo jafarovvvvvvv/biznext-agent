@@ -114,6 +114,7 @@ class DataAgent:
         final_text: str | None = None
         limit: str | None = None
         reminded = False
+        budget_exhausted = False  # tool budget spent: the model gets one chance to submit from collected data
         sql_failures_in_row = 0
 
         try:
@@ -159,15 +160,24 @@ class DataAgent:
                     break
 
                 tool_results: list[ToolResult] = []
+                over_budget = False
                 for call in response.tool_calls:
                     if call.name == SUBMIT_ANSWER:
                         tool_results.append(ToolResult(call.id, error_content(
                             "submit_too_early", "Call submit_answer alone, after reviewing the other tool results."), True))
                         continue
+                    if counters["tools"] >= s.agent_max_tool_calls:
+                        if budget_exhausted:
+                            limit = "tool_calls"
+                            break
+                        over_budget = True
+                        tool_results.append(ToolResult(call.id, error_content(
+                            "tool_budget_exhausted",
+                            "The data request budget for this question is exhausted. Do not call data tools again: "
+                            "call submit_answer now using the results you already have and state in limitations "
+                            "what could not be checked."), True))
+                        continue
                     counters["tools"] += 1
-                    if counters["tools"] > s.agent_max_tool_calls:
-                        limit = "tool_calls"
-                        break
                     tool = self.tools.get(call.name)
                     if tool is None:
                         tool_results.append(ToolResult(call.id, error_content("unknown_tool", f"tool '{call.name}' does not exist"), True))
@@ -191,7 +201,13 @@ class DataAgent:
                         break
                 if limit:
                     break
-                messages.append(LLMMessage.results(tool_results))
+                note = ""
+                if over_budget:
+                    budget_exhausted = True
+                    await trace.instant("limit_reached", detail={"limit": "tool_calls", "action": "finalize"})
+                elif iteration == s.agent_max_iterations - 2:
+                    note = "This is the last step: call submit_answer now with the results you already have."
+                messages.append(LLMMessage.results(tool_results, text=note))
             else:
                 limit = "iterations"
         except DatabaseUnavailableError as exc:

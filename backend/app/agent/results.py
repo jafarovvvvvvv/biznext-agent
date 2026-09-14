@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
+_NUMBER_IN_TEXT = re.compile(r"\d+(?:[.,]\d+)?")
 NUMERIC_TYPES = {"int2", "int4", "int8", "numeric", "float4", "float8", "money", "smallint", "integer", "bigint",
                  "real", "double precision", "decimal"}
 DATE_TYPES = {"date", "timestamp", "timestamptz", "timestamp with time zone", "timestamp without time zone"}
@@ -59,12 +61,15 @@ class ResultRegistry:
         return list(self._results.values())
 
     def numeric_values(self, limit: int = 20000) -> list[float]:
+        """Numbers the answer may cite: numeric cells plus numbers inside text cells (SKU names like '3,2% 1 л')."""
         values: list[float] = []
         for result in self._results.values():
             for row in result.rows:
                 for value in row.values():
                     if isinstance(value, (int, float)) and not isinstance(value, bool):
                         values.append(float(value))
-                        if len(values) >= limit:
-                            return values
+                    elif isinstance(value, str):
+                        values += [float(n.replace(",", ".")) for n in _NUMBER_IN_TEXT.findall(value)]
+                    if len(values) >= limit:
+                        return values
         return values

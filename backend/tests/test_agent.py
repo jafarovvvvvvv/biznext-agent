@@ -45,7 +45,7 @@ async def test_successful_answer_uses_real_result_values(settings: Settings, sem
             metrics=[{"label": "Выручка", "result_id": "r1", "row": 1, "value_column": "revenue",
                       "change_pct_column": None, "unit": "currency"}],
             table={"result_id": "r1", "title": "По месяцам", "columns": ["month", "revenue"],
-                   "column_units": [{"column": "revenue", "unit": "currency"}]},
+                   "column_labels": [{"column": "revenue", "label": "Выручка", "unit": "currency"}]},
             chart={"result_id": "r1", "type": "bar", "title": "Выручка", "x": "month",
                    "series": [{"column": "revenue", "label": "Выручка", "unit": "currency"}]},
         ))),
@@ -58,7 +58,7 @@ async def test_successful_answer_uses_real_result_values(settings: Settings, sem
     body = run.response
     assert body["metrics"][0]["value"] == 403_900_000.0
     assert body["metrics"][0]["formatted"] == "403,9 млн ₸"
-    assert body["table"]["rows"] == MONTHLY and body["table"]["columns"][1]["type"] == "currency"
+    assert body["table"]["rows"] == MONTHLY and body["table"]["columns"][1] == {"key": "revenue", "label": "Выручка", "type": "currency"}
     assert body["chart"]["x_type"] == "date" and len(body["chart"]["data"]) == 2
     assert body["sql"][0]["sql"].startswith("SELECT") and body["sources"]["tables"] == ["sales_orders"]
     steps = [e["step"] for e in events if e["status"] != "started"]
@@ -115,12 +115,29 @@ async def test_iteration_limit(settings: Settings, semantic: SemanticLayer) -> N
     assert any(s["step"] == "limit_reached" for s in run.steps)
 
 
-async def test_tool_call_limit(settings: Settings, semantic: SemanticLayer) -> None:
+async def test_tool_budget_gives_one_chance_to_submit(settings: Settings, semantic: SemanticLayer) -> None:
     settings.agent_max_tool_calls = 2
-    provider = ScriptedProvider([llm_tools(*[("get_database_schema", {})] * 3)])
+    provider = ScriptedProvider([
+        llm_tools(*[("get_database_schema", {})] * 3),
+        lambda messages: (_check_budget_message(messages), llm_tools(("submit_answer", submit())))[1],
+    ])
     agent, _ = build_agent(settings, semantic, provider)
     run = await agent.run("много вызовов", today=TODAY)
-    assert run.status == "limit_reached" and run.tool_calls == 3
+    assert run.status == "answered" and run.tool_calls == 2
+    assert any(s["step"] == "limit_reached" for s in run.steps)
+
+
+def _check_budget_message(messages: list[Any]) -> None:
+    results = messages[-1].tool_results
+    assert [r.is_error for r in results] == [False, False, True] and "tool_budget_exhausted" in results[2].content
+
+
+async def test_tool_call_limit_when_model_ignores_budget(settings: Settings, semantic: SemanticLayer) -> None:
+    settings.agent_max_tool_calls = 2
+    provider = ScriptedProvider([llm_tools(*[("get_database_schema", {})] * 3), llm_tools(("get_database_schema", {}))])
+    agent, _ = build_agent(settings, semantic, provider)
+    run = await agent.run("много вызовов", today=TODAY)
+    assert run.status == "limit_reached" and run.tool_calls == 2
 
 
 async def test_insufficient_data_status(settings: Settings, semantic: SemanticLayer) -> None:
@@ -231,7 +248,7 @@ async def test_rows_sent_to_llm_are_capped(settings: Settings, semantic: Semanti
     provider = ScriptedProvider([
         llm_tools(("run_readonly_sql", {"sql": "SELECT n FROM demo.sales_orders", "purpose": "many"})),
         lambda messages: (_check_capped(messages), llm_tools(("submit_answer", submit(
-            table={"result_id": "r1", "title": "t", "columns": [], "column_units": []}))))[1],
+            table={"result_id": "r1", "title": "t", "columns": [], "column_labels": []}))))[1],
     ])
     agent, _ = build_agent(settings, semantic, provider, FakeConnector(lambda sql: result(many)))
     run = await agent.run("вопрос", today=TODAY)
