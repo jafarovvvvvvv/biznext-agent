@@ -1,0 +1,16 @@
+[project]
+name = "biznext-agent-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs live PostgreSQL (DATABASE_URL / AGENT_DATABASE_URL)",
+    "live_llm: calls a real LLM provider (needs LLM_API_KEY)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:sqlglot.*",
+]
