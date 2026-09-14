@@ -31,3 +31,6 @@ Thumbs.db
 # local artifacts
 *.log
 tmp/
+
+# local Claude Code settings
+.claude/settings.local.json

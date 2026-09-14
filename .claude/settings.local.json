@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell($f = \"C:\\\\Users\\\\Emil\\\\biznext.kz\\\\Промпт для сборки BizNext Agent Demo.md\"; $l = Get-Content -Encoding UTF8 $f; \"lines: $\\($l.Count\\)\"; \"fences: $\\(\\($l | Where-Object { $_ -match '^```' }\\).Count\\)\"; $l | Where-Object { $_ -match '^# \\\\d+\\\\.' })"
-    ]
-  }
-}
