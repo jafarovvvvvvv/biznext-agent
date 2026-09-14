@@ -420,7 +420,10 @@ class AgentTool(Protocol):
 
 SDK `openai`, `AsyncOpenAI(api_key, base_url=LLM_BASE_URL or None)`, Chat Completions с `tools`
 (function calling). Маппинг нормализованных сообщений ↔ `assistant.tool_calls` / `role: tool`.
-Годится для OpenAI, OpenRouter, Ollama, vLLM, LM Studio.
+Годится для OpenAI, OpenRouter, Ollama, vLLM, LM Studio. `LLM_PROVIDER=openai` — тот же провайдер
+с официальным endpoint OpenAI. Для reasoning-моделей (GPT-5): без `temperature`, лимит —
+`max_completion_tokens`, `reasoning_effort` из `LLM_EFFORT` (с одним повтором без параметра, если
+модель его не принимает).
 
 ### 7.5 Безопасный SQL-слой
 
