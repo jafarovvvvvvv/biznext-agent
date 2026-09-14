@@ -63,11 +63,6 @@ def _fmt(d: date) -> str:
     return d.strftime("%d.%m.%Y")
 
 
-def _range_label(start: date, end: date, lang: str) -> str:
-    last = end - timedelta(days=1)
-    return f"{_fmt(start)} – {_fmt(last)}" if start != last else _fmt(start)
-
-
 class DateContext:
     def __init__(self, today: date) -> None:
         self.today = today
@@ -112,9 +107,11 @@ class DateContext:
         weekday_ru = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
         weekday_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         wd = weekday_en[self.today.weekday()] if lang == "en" else weekday_ru[self.today.weekday()]
-        lines = [f"Today: {self.today.isoformat()} ({wd}). Periods are half-open [start, end):"]
+        lines = [f"Today: {self.today.isoformat()} ({wd}). Today is the last day with data; tomorrow has not started.",
+                 "Periods: first and last included day; in SQL use date >= start AND date < end (end = day after last)."]
         for p in self.periods():
-            lines.append(f"- {p.key}: {p.label(lang)} → start={p.start.isoformat()}, end={p.end.isoformat()}")
+            lines.append(f"- {p.key}: {p.label(lang)} → {p.start.isoformat()} … {p.last_day.isoformat()} "
+                         f"(start={p.start.isoformat()}, end={p.end.isoformat()})")
         if data_range:
             lines.append(f"Available data: {data_range[0].isoformat()} … {data_range[1].isoformat()} (inclusive).")
         return "\n".join(lines)
