@@ -73,7 +73,7 @@ class CalculateMetricTool:
         label = metric.label.get(ctx.lang)
         stored = ctx.results.add(
             kind="metric", purpose=label, columns=columns, rows=rows, row_count=len(rows), truncated=False,
-            sql=[{"sql": s["sql"], "purpose": f"{label} ({key})", "row_count": s["row_count"],
+            sql=[{"sql": s["sql"], "purpose": _purpose(ctx, str(s.get("metric") or key)), "row_count": s["row_count"],
                   "execution_ms": s["execution_ms"]} for s in comparison.sql],
             tables=comparison.tables, metric=key,
         )
@@ -98,6 +98,11 @@ class CalculateMetricTool:
         if granularity:
             payload["granularity"] = granularity
         return ToolOutcome(to_json(payload))
+
+
+def _purpose(ctx: ToolContext, key: str) -> str:
+    metric = ctx.semantic.metrics.metrics.get(key)
+    return f"{metric.label.get(ctx.lang)} ({key})" if metric else key
 
 
 def _date(value: Any, name: str, optional: bool = False) -> date | None:

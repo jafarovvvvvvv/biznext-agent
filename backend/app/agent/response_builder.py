@@ -22,10 +22,10 @@ def _column_type(result: StoredResult, column: str, unit: str | None) -> str:
         return unit
     if unit == "date" or (info is not None and info.is_date):
         return "date"
+    if unit is None and info is not None and info.unit in ("currency", "percent"):
+        return info.unit
     if unit in ("number", "hours", "liters", "kg") or (info is not None and info.is_numeric):
         return "number"
-    if info is not None and info.unit in ("currency", "percent"):
-        return info.unit
     return "text"
 
 
@@ -59,7 +59,21 @@ def build_metrics(items: list[dict[str, Any]], results: ResultRegistry, lang: st
     return cards
 
 
-def build_table(spec: dict[str, Any] | None, results: ResultRegistry, issues: BuildIssues) -> dict[str, Any] | None:
+METRIC_COLUMN_LABELS = {
+    "dimension": ("Разрез", "Breakdown"), "period": ("Период", "Period"), "value": ("Значение", "Value"),
+    "compare_value": ("База сравнения", "Comparison"), "change_abs": ("Изменение", "Change"),
+    "change_pct": ("Изменение, %", "Change, %"),
+}
+
+
+def column_label(result: StoredResult, column: str, lang: str) -> str:
+    if result.kind == "metric" and column in METRIC_COLUMN_LABELS:
+        ru, en = METRIC_COLUMN_LABELS[column]
+        return en if lang == "en" else ru
+    return column
+
+
+def build_table(spec: dict[str, Any] | None, results: ResultRegistry, issues: BuildIssues, lang: str = "ru") -> dict[str, Any] | None:
     if not spec:
         return None
     result = results.get(str(spec.get("result_id")))
@@ -72,7 +86,8 @@ def build_table(spec: dict[str, Any] | None, results: ResultRegistry, issues: Bu
     if dropped:
         issues.append(f"table: unknown columns {dropped}")
     units = {u.get("column"): u.get("unit") for u in (spec.get("column_units") or []) if isinstance(u, dict)}
-    columns = [{"key": c, "label": c, "type": _column_type(result, c, units.get(c))} for c in wanted]
+    columns = [{"key": c, "label": column_label(result, c, lang), "type": _column_type(result, c, units.get(c))}
+               for c in wanted]
     rows = [{c: row.get(c) for c in wanted} for row in result.rows[:MAX_TABLE_ROWS]]
     return {
         "title": str(spec.get("title") or ""),
@@ -154,7 +169,7 @@ def build_response(arguments: dict[str, Any], results: ResultRegistry, lang: str
         "answer": str(arguments.get("answer") or ""),
         "highlights": highlights,
         "metrics": build_metrics(arguments.get("metrics") or [], results, lang, currency_symbol, issues),
-        "table": build_table(arguments.get("table"), results, issues),
+        "table": build_table(arguments.get("table"), results, issues, lang),
         "chart": build_chart(arguments.get("chart"), results, issues),
         "sources": sources,
         "sql": sql,
