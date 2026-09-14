@@ -33,4 +33,4 @@ Thumbs.db
 tmp/
 
 # local Claude Code settings
-.claude/settings.local.json
+.claude/
