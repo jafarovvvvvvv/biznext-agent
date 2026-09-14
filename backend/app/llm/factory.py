@@ -4,6 +4,7 @@ from app.config import SUPPORTED_LLM_PROVIDERS, Settings
 from app.llm.anthropic_provider import AnthropicProvider
 from app.llm.base import LLMProvider
 from app.llm.openai_compatible_provider import OpenAICompatibleProvider
+from app.llm.openai_responses_provider import OpenAIResponsesProvider
 
 
 def build_provider(settings: Settings) -> LLMProvider:
@@ -20,5 +21,7 @@ def build_provider(settings: Settings) -> LLMProvider:
     )
     if provider == "anthropic":
         return AnthropicProvider(fallbacks=settings.llm_fallbacks, **common)
-    base_url = settings.llm_base_url if provider == "openai_compatible" else ""
-    return OpenAICompatibleProvider(name=provider, base_url=base_url, **common)
+    if provider == "openai":
+        # official endpoint: Responses API (required for reasoning models with function tools)
+        return OpenAIResponsesProvider(**common)
+    return OpenAICompatibleProvider(name=provider, base_url=settings.llm_base_url, **common)

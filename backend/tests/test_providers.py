@@ -3,6 +3,7 @@ from app.llm.anthropic_provider import AnthropicProvider
 from app.llm.base import LLMMessage, ToolCall, ToolResult, ToolSpec
 from app.llm.factory import build_provider
 from app.llm.openai_compatible_provider import OpenAICompatibleProvider
+from app.llm.openai_responses_provider import OpenAIResponsesProvider
 
 TOOLS = [ToolSpec("run_readonly_sql", "run", {"type": "object", "properties": {}}),
          ToolSpec("submit_answer", "final", {"type": "object", "properties": {}}, strict=True)]
@@ -61,6 +62,22 @@ def test_factory_and_configuration() -> None:
     base = dict(database_url="", agent_database_url="")
     assert build_provider(Settings(llm_provider="anthropic", llm_api_key="", **base)).configured is False
     openai = build_provider(Settings(llm_provider="openai", llm_model="gpt-x", llm_api_key="k", **base))
-    assert openai.name == "openai" and openai.configured
+    assert isinstance(openai, OpenAIResponsesProvider) and openai.configured
     local = build_provider(Settings(llm_provider="openai_compatible", llm_base_url="http://ollama:11434/v1", llm_api_key="", **base))
     assert local.configured  # local servers need no key
+
+
+def test_openai_responses_mapping() -> None:
+    provider = OpenAIResponsesProvider(api_key="k", model="gpt-5.6-terra", effort="max")
+    raw = [{"type": "reasoning", "id": "rs_1", "encrypted_content": "enc", "summary": []},
+           {"type": "function_call", "call_id": "t1", "name": "run_readonly_sql", "arguments": "{}"}]
+    params = provider.request_params(system="sys", messages=conversation("openai", raw), tools=TOOLS, max_output_tokens=None)
+    assert params["instructions"] == "sys" and params["store"] is False
+    assert params["include"] == ["reasoning.encrypted_content"] and params["reasoning"] == {"effort": "xhigh"}
+    items = params["input"]
+    assert items[0] == {"role": "user", "content": "question"}
+    assert items[1:3] == raw  # native output replayed unchanged
+    assert items[3] == {"type": "function_call_output", "call_id": "t1", "output": 'ERROR: {"rows":[]}'}
+    assert items[4] == {"role": "user", "content": "reminder"}
+    assert params["tools"][1] == {"type": "function", "name": "submit_answer", "description": "final",
+                                  "parameters": {"type": "object", "properties": {}}, "strict": True}
