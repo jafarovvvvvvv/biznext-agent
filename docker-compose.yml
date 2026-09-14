@@ -1,0 +1,103 @@
+# BizNext Agent — весь стек поднимается одной командой:  docker compose up -d --build
+# Целевая среда: домашний Linux-сервер. Облака, Kubernetes и managed PostgreSQL не нужны.
+name: ${COMPOSE_PROJECT_NAME:-biznext}
+
+services:
+  db:
+    image: postgres:17.9-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      AGENT_DB_USER: ${AGENT_DB_USER}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD}
+      DATA_SCHEMA: ${DATA_SCHEMA:-demo}
+      SQL_STATEMENT_TIMEOUT_MS: ${SQL_STATEMENT_TIMEOUT_MS:-15000}
+      TZ: ${APP_TIMEZONE:-Asia/Almaty}
+      PGTZ: ${APP_TIMEZONE:-Asia/Almaty}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # выполняется только при первой инициализации тома: роли, схемы, права
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Одноразовый сервис: наполняет схему demo синтетическими данными, если она пуста.
+  seed:
+    build: ./database/seed
+    restart: "no"
+    environment:
+      SEED_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATA_SCHEMA: ${DATA_SCHEMA:-demo}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Almaty}
+      SEED_RANDOM_SEED: ${SEED_RANDOM_SEED:-20260914}
+      SEED_END_DATE: ${SEED_END_DATE:-}
+      SEED_FORCE: ${SEED_FORCE:-0}
+      AGENT_DB_USER: ${AGENT_DB_USER}
+      APP_DB_USER: ${APP_DB_USER}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      # приложение (история, traces) и агент ходят в БД под РАЗНЫМИ пользователями
+      DATABASE_URL: postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      AGENT_DATABASE_URL: postgresql://${AGENT_DB_USER}:${AGENT_DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATA_SCHEMA: ${DATA_SCHEMA:-demo}
+      SEMANTIC_DIR: /app/semantic
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Almaty}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_EFFORT: ${LLM_EFFORT:-high}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-16000}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-90}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_FALLBACKS: ${LLM_FALLBACKS:-auto}
+      AGENT_MAX_ITERATIONS: ${AGENT_MAX_ITERATIONS:-10}
+      AGENT_MAX_TOOL_CALLS: ${AGENT_MAX_TOOL_CALLS:-16}
+      AGENT_MAX_SQL_RETRIES: ${AGENT_MAX_SQL_RETRIES:-3}
+      AGENT_MAX_ROWS_TO_LLM: ${AGENT_MAX_ROWS_TO_LLM:-60}
+      AGENT_MAX_RESULT_CHARS_TO_LLM: ${AGENT_MAX_RESULT_CHARS_TO_LLM:-12000}
+      AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-180}
+      AGENT_HISTORY_TURNS: ${AGENT_HISTORY_TURNS:-6}
+      SQL_MAX_ROWS: ${SQL_MAX_ROWS:-500}
+      SQL_STATEMENT_TIMEOUT_MS: ${SQL_STATEMENT_TIMEOUT_MS:-15000}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      INSIGHTS_CACHE_SECONDS: ${INSIGHTS_CACHE_SECONDS:-3600}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./semantic:/app/semantic:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8095}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
