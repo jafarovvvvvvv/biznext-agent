@@ -1,0 +1,47 @@
+version: 1
+default_period: last_month
+periods: [month_to_date, last_month, quarter_to_date, last_quarter, year_to_date, last_30_days]
+
+kpis:
+  - {metric: revenue, sparkline: {granularity: month, points: 12}}
+  - {metric: operating_profit, sparkline: {granularity: month, points: 12}}
+  - {metric: gross_margin_pct, sparkline: {granularity: month, points: 12}}
+  - {metric: orders_count, sparkline: {granularity: month, points: 12}}
+  - {metric: production_volume, sparkline: {granularity: month, points: 12}}
+  - {metric: inventory_below_reorder}
+
+charts:
+  - key: revenue_profit_trend
+    type: area
+    title: {ru: "Выручка и валовая прибыль по месяцам", en: "Revenue and gross profit by month"}
+    metrics: [revenue, gross_profit]
+    granularity: month
+    lookback: 12
+
+  - key: revenue_by_category
+    type: bar
+    title: {ru: "Выручка по категориям", en: "Revenue by category"}
+    metrics: [revenue]
+    group_by: category
+    top: 10
+
+  - key: revenue_by_region
+    type: pie
+    title: {ru: "Структура выручки по регионам", en: "Revenue by region"}
+    metrics: [revenue]
+    group_by: region
+    top: 8
+
+  - key: margin_trend
+    type: line
+    title: {ru: "Валовая маржа по месяцам, %", en: "Gross margin by month, %"}
+    metrics: [gross_margin_pct]
+    granularity: month
+    lookback: 12
+
+  - key: plan_attainment_by_region
+    type: bar
+    title: {ru: "Выполнение плана продаж по регионам, %", en: "Sales plan attainment by region, %"}
+    metrics: [sales_plan_attainment_pct]
+    group_by: region
+    top: 10

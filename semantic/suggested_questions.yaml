@@ -1,0 +1,16 @@
+# Примеры вопросов для стартового экрана. Плейсхолдеры подставляет backend из текущих дат:
+# ru — название месяца строчными с годом («август 2026»), en — «August 2026».
+version: 1
+questions:
+  - {category: summary, text: {ru: "Что происходит с бизнесом за последний месяц?", en: "What happened to the business last month?"}}
+  - {category: causal, text: {ru: "Почему снизилась прибыль за {last_month}?", en: "Why did profit drop in {last_month}?"}}
+  - {category: comparison, text: {ru: "Сравни выручку: {last_month} против {month_before_last}", en: "Compare revenue for {last_month} with {month_before_last}"}}
+  - {category: factual, text: {ru: "Сколько мы продали в прошлом месяце?", en: "How much did we sell last month?"}}
+  - {category: ranking, text: {ru: "Какие товары показали худшую динамику за последний квартал?", en: "Which products performed worst last quarter?"}}
+  - {category: trend, text: {ru: "Какие категории растут быстрее всего?", en: "Which categories are growing fastest?"}}
+  - {category: chart, text: {ru: "Покажи продажи по регионам за {last_month}", en: "Show sales by region for {last_month}"}}
+  - {category: attention, text: {ru: "Что сейчас требует моего внимания?", en: "What needs my attention right now?"}}
+  - {category: anomaly, text: {ru: "Были ли аномалии в возвратах за последние 3 месяца?", en: "Were there any anomalies in returns over the last 3 months?"}}
+  - {category: aggregation, text: {ru: "Покажи динамику производства по линиям за последние 3 месяца", en: "Show production by line for the last 3 months"}}
+  - {category: plan, text: {ru: "Как выполняется план продаж за {this_month}?", en: "How is the sales plan going in {this_month}?"}}
+  - {category: finance, text: {ru: "Кто из клиентов просрочил оплату?", en: "Which customers are late with payments?"}}

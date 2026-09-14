@@ -1,0 +1,158 @@
+# Словарь данных: бизнес-смысл таблиц и ключевых колонок.
+# Типы колонок и связи берутся интроспекцией БД; описания колонок, не указанные здесь,
+# берутся из COMMENT ON в базе.
+version: 1
+schema: demo
+
+tables:
+  regions:
+    description: {ru: "Регионы Казахстана", en: "Regions of Kazakhstan"}
+    grain: {ru: "одна строка = один регион"}
+    business_meaning: {ru: "Регион клиента определяет регион продаж и план продаж."}
+    columns:
+      macro_region:
+        description: {ru: "Макрорегион"}
+        values: {"Юг": {ru: "Юг"}, "Север": {ru: "Север"}, "Центр": {ru: "Центр"}, "Запад": {ru: "Запад"}, "Восток": {ru: "Восток"}}
+
+  warehouses:
+    description: {ru: "Склад завода и региональные распределительные центры (РЦ)", en: "Plant warehouse and distribution centers"}
+    grain: {ru: "одна строка = один склад"}
+    business_meaning: {ru: "С какого склада отгружаются заказы клиентов, где хранятся остатки и происходят списания."}
+    columns:
+      warehouse_type:
+        description: {ru: "Тип склада"}
+        values: {plant: {ru: "склад готовой продукции завода"}, distribution_center: {ru: "распределительный центр"}}
+
+  product_categories:
+    description: {ru: "Категории продукции", en: "Product categories"}
+    grain: {ru: "одна строка = одна категория"}
+    business_meaning: {ru: "Основной разрез ассортимента для анализа продаж, маржи и плана."}
+
+  products:
+    description: {ru: "Товары (SKU)", en: "Products (SKU)"}
+    grain: {ru: "одна строка = один SKU"}
+    business_meaning: {ru: "Ассортимент завода. list_price — текущая базовая оптовая цена; фактические цены продаж — в sales_order_items."}
+    columns:
+      shelf_life_days: {description: {ru: "Срок годности, дней. Короткий срок — выше риск списаний."}}
+      list_price: {description: {ru: "Текущая базовая оптовая цена за упаковку, тенге без НДС (не использовать для выручки)."}}
+
+  raw_materials:
+    description: {ru: "Сырьё, ингредиенты и упаковка", en: "Raw materials, ingredients and packaging"}
+    grain: {ru: "одна строка = один материал"}
+    business_meaning: {ru: "Главное сырьё — «Молоко сырое»; его цена сильнее всего влияет на себестоимость."}
+    columns:
+      material_type:
+        description: {ru: "Тип материала"}
+        values: {"Сырьё": {ru: "сырьё"}, "Ингредиенты": {ru: "ингредиенты"}, "Упаковка": {ru: "упаковка"}}
+
+  suppliers:
+    description: {ru: "Поставщики", en: "Suppliers"}
+    grain: {ru: "одна строка = один поставщик"}
+    business_meaning: {ru: "Фермерские хозяйства (сырое молоко), поставщики ингредиентов и упаковки."}
+
+  bill_of_materials:
+    description: {ru: "Спецификации: нормы расхода материалов на упаковку товара", en: "Bill of materials"}
+    grain: {ru: "одна строка = товар × материал"}
+    business_meaning: {ru: "Позволяет оценить, как цена материала влияет на себестоимость конкретного товара."}
+
+  purchase_orders:
+    description: {ru: "Заказы поставщикам", en: "Purchase orders"}
+    grain: {ru: "одна строка = один заказ поставщику"}
+    business_meaning: {ru: "Закупки материалов. Период закупки — по order_date. Отменённые заказы не учитывать."}
+    columns:
+      status:
+        description: {ru: "Статус закупки"}
+        values: {delivered: {ru: "поставлен"}, in_transit: {ru: "в пути"}, cancelled: {ru: "отменён"}}
+
+  purchase_order_items:
+    description: {ru: "Строки закупок: материал, количество, цена", en: "Purchase order lines"}
+    grain: {ru: "одна строка = материал в заказе поставщику"}
+    business_meaning: {ru: "Средняя закупочная цена = SUM(amount) / SUM(quantity) по материалу."}
+
+  production_lines:
+    description: {ru: "Производственные линии", en: "Production lines"}
+    grain: {ru: "одна строка = одна линия"}
+    business_meaning: {ru: "Линии завода и их основная категория продукции."}
+
+  production_batches:
+    description: {ru: "Производственные партии: план и факт выпуска", en: "Production batches"}
+    grain: {ru: "одна строка = товар × линия × дата × смена"}
+    business_meaning: {ru: "Выпуск = SUM(produced_quantity); брак = SUM(defect_quantity); выполнение плана = produced / planned."}
+    columns:
+      shift:
+        description: {ru: "Смена"}
+        values: {day: {ru: "дневная"}, night: {ru: "ночная"}}
+
+  line_downtime:
+    description: {ru: "Простои производственных линий", en: "Production line downtime"}
+    grain: {ru: "одна строка = один простой"}
+    business_meaning: {ru: "Внеплановые простои (поломки, нет сырья, отключения) снижают выпуск и могут вызвать дефицит на складах."}
+    columns:
+      downtime_type:
+        description: {ru: "Тип простоя"}
+        values: {planned: {ru: "плановый (ТО, переналадка)"}, unplanned: {ru: "внеплановый"}}
+      reason:
+        description: {ru: "Причина простоя"}
+        values: {"Плановое ТО": {ru: "плановое техобслуживание"}, "Переналадка": {ru: "переход на другой SKU"}, "Поломка оборудования": {ru: "поломка"}, "Нет сырья": {ru: "нехватка сырья"}, "Отключение электроэнергии": {ru: "отключение электроэнергии"}}
+
+  employees:
+    description: {ru: "Сотрудники (вымышленные)", en: "Employees (fictional)"}
+    grain: {ru: "одна строка = один сотрудник"}
+    business_meaning: {ru: "Менеджеры по продажам (department = 'Продажи') закреплены за регионами и клиентами."}
+
+  customers:
+    description: {ru: "Клиенты (вымышленные)", en: "Customers (fictional)"}
+    grain: {ru: "одна строка = один клиент"}
+    business_meaning: {ru: "Покупатели продукции. region_id клиента — регион продаж."}
+    columns:
+      customer_type:
+        description: {ru: "Тип клиента (канал продаж)"}
+        values: {"Розничная сеть": {ru: "розничная сеть"}, "Дистрибьютор": {ru: "дистрибьютор"}, "HoReCa": {ru: "кафе, рестораны, гостиницы"}, "Независимый магазин": {ru: "независимый магазин"}}
+
+  sales_orders:
+    description: {ru: "Заказы клиентов (шапка)", en: "Sales orders (header)"}
+    grain: {ru: "одна строка = один заказ"}
+    business_meaning: {ru: "Период продаж — по order_date. Отменённые заказы не входят в выручку. Просроченная оплата: paid_date IS NULL и payment_due_date < текущей даты."}
+    columns:
+      status:
+        description: {ru: "Статус заказа"}
+        values: {delivered: {ru: "доставлен"}, shipped: {ru: "отгружен, в пути"}, cancelled: {ru: "отменён — не входит в выручку"}}
+      order_date: {description: {ru: "Дата заказа; по ней считается выручка за период"}}
+      paid_date: {description: {ru: "Дата оплаты; NULL — не оплачен"}}
+
+  sales_order_items:
+    description: {ru: "Строки заказов: товар, количество, выручка, себестоимость", en: "Sales order lines"}
+    grain: {ru: "одна строка = товар в заказе"}
+    business_meaning: {ru: "Главная таблица фактов продаж. Выручка = SUM(revenue_amount), себестоимость = SUM(cost_amount), валовая прибыль = разница."}
+    columns:
+      revenue_amount: {description: {ru: "Выручка строки после скидки, тенге без НДС"}}
+      cost_amount: {description: {ru: "Себестоимость строки на дату заказа, тенге"}}
+
+  sales_returns:
+    description: {ru: "Возвраты от клиентов", en: "Customer returns"}
+    grain: {ru: "одна строка = возврат товара по заказу"}
+    business_meaning: {ru: "Доля возвратов = SUM(refund_amount) / выручка. Всплески возвратов с причиной «Производственный брак» связаны с партиями с повышенным браком."}
+
+  inventory_snapshots:
+    description: {ru: "Ежедневные остатки готовой продукции по складам", en: "Daily inventory snapshots"}
+    grain: {ru: "одна строка = дата × склад × товар"}
+    business_meaning: {ru: "Текущие остатки — строки с максимальной snapshot_date. Нельзя суммировать остатки по дням: это срезы, а не движения."}
+
+  write_offs:
+    description: {ru: "Списания готовой продукции", en: "Write-offs"}
+    grain: {ru: "одна строка = списание товара на складе за день"}
+    business_meaning: {ru: "Потери по себестоимости; уменьшают операционную прибыль."}
+    columns:
+      reason:
+        description: {ru: "Причина списания"}
+        values: {"Истёк срок годности": {ru: "просрочка"}, "Нарушение холодовой цепи": {ru: "нарушение температурного режима"}, "Производственный брак": {ru: "брак"}, "Повреждение при транспортировке": {ru: "повреждение"}}
+
+  operating_expenses:
+    description: {ru: "Операционные расходы", en: "Operating expenses"}
+    grain: {ru: "одна строка = одна проводка расхода"}
+    business_meaning: {ru: "Расходы вне производственной себестоимости: логистика, ФОТ непроизводственного персонала, электроэнергия, маркетинг, аренда, ремонт, прочее."}
+
+  sales_plans:
+    description: {ru: "План продаж", en: "Sales plan"}
+    grain: {ru: "одна строка = месяц × регион клиента × категория"}
+    business_meaning: {ru: "Месячный план выручки. Для неполного текущего месяца сравнивать с планом пропорционально прошедшим дням или предупреждать."}

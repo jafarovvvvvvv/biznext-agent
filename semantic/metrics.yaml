@@ -1,0 +1,499 @@
+# Бизнес-метрики. Правила сборки SQL — docs/ARCHITECTURE.md §6.3.
+# Период — полуинтервал [start, end). Одинаковые joins внутри источника пишутся одинаковой строкой.
+version: 1
+
+sources:
+  sales_items:
+    from: "demo.sales_order_items soi JOIN demo.sales_orders so ON so.order_id = soi.order_id"
+    date_column: "so.order_date"
+    filters: ["so.status <> 'cancelled'"]
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN demo.products p ON p.product_id = soi.product_id", "JOIN demo.product_categories pc ON pc.category_id = p.category_id"]
+        column: "pc.name"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN demo.products p ON p.product_id = soi.product_id"]
+        column: "p.name"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id", "JOIN demo.regions r ON r.region_id = c.region_id"]
+        column: "r.name"
+      macro_region:
+        label: {ru: "Макрорегион", en: "Macro region"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id", "JOIN demo.regions r ON r.region_id = c.region_id"]
+        column: "r.macro_region"
+      customer_type:
+        label: {ru: "Тип клиента", en: "Customer type"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.customer_type"
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.name"
+      sales_manager:
+        label: {ru: "Менеджер", en: "Sales manager"}
+        joins: ["JOIN demo.employees e ON e.employee_id = so.sales_manager_id"]
+        column: "e.full_name"
+      warehouse:
+        label: {ru: "Склад отгрузки", en: "Warehouse"}
+        joins: ["JOIN demo.warehouses w ON w.warehouse_id = so.warehouse_id"]
+        column: "w.name"
+
+  sales_orders:
+    from: "demo.sales_orders so"
+    date_column: "so.order_date"
+    filters: ["so.status <> 'cancelled'"]
+    dimensions:
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id", "JOIN demo.regions r ON r.region_id = c.region_id"]
+        column: "r.name"
+      macro_region:
+        label: {ru: "Макрорегион", en: "Macro region"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id", "JOIN demo.regions r ON r.region_id = c.region_id"]
+        column: "r.macro_region"
+      customer_type:
+        label: {ru: "Тип клиента", en: "Customer type"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.customer_type"
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.name"
+      sales_manager:
+        label: {ru: "Менеджер", en: "Sales manager"}
+        joins: ["JOIN demo.employees e ON e.employee_id = so.sales_manager_id"]
+        column: "e.full_name"
+      warehouse:
+        label: {ru: "Склад отгрузки", en: "Warehouse"}
+        joins: ["JOIN demo.warehouses w ON w.warehouse_id = so.warehouse_id"]
+        column: "w.name"
+
+  receivables:
+    from: "demo.sales_order_items soi JOIN demo.sales_orders so ON so.order_id = soi.order_id"
+    date_column: "so.payment_due_date"
+    filters: ["so.status <> 'cancelled'", "so.paid_date IS NULL", "so.payment_due_date < current_date"]
+    dimensions:
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.name"
+      customer_type:
+        label: {ru: "Тип клиента", en: "Customer type"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.customer_type"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN demo.customers c ON c.customer_id = so.customer_id", "JOIN demo.regions r ON r.region_id = c.region_id"]
+        column: "r.name"
+      sales_manager:
+        label: {ru: "Менеджер", en: "Sales manager"}
+        joins: ["JOIN demo.employees e ON e.employee_id = so.sales_manager_id"]
+        column: "e.full_name"
+
+  returns:
+    from: "demo.sales_returns sr"
+    date_column: "sr.return_date"
+    filters: []
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN demo.products p ON p.product_id = sr.product_id", "JOIN demo.product_categories pc ON pc.category_id = p.category_id"]
+        column: "pc.name"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN demo.products p ON p.product_id = sr.product_id"]
+        column: "p.name"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN demo.sales_orders so ON so.order_id = sr.order_id", "JOIN demo.customers c ON c.customer_id = so.customer_id", "JOIN demo.regions r ON r.region_id = c.region_id"]
+        column: "r.name"
+      customer_type:
+        label: {ru: "Тип клиента", en: "Customer type"}
+        joins: ["JOIN demo.sales_orders so ON so.order_id = sr.order_id", "JOIN demo.customers c ON c.customer_id = so.customer_id"]
+        column: "c.customer_type"
+      return_reason:
+        label: {ru: "Причина возврата", en: "Return reason"}
+        joins: []
+        column: "sr.reason"
+
+  write_offs:
+    from: "demo.write_offs wo"
+    date_column: "wo.write_off_date"
+    filters: []
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN demo.products p ON p.product_id = wo.product_id", "JOIN demo.product_categories pc ON pc.category_id = p.category_id"]
+        column: "pc.name"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN demo.products p ON p.product_id = wo.product_id"]
+        column: "p.name"
+      warehouse:
+        label: {ru: "Склад", en: "Warehouse"}
+        joins: ["JOIN demo.warehouses w ON w.warehouse_id = wo.warehouse_id"]
+        column: "w.name"
+      write_off_reason:
+        label: {ru: "Причина списания", en: "Write-off reason"}
+        joins: []
+        column: "wo.reason"
+
+  expenses:
+    from: "demo.operating_expenses oe"
+    date_column: "oe.expense_date"
+    filters: []
+    dimensions:
+      expense_category:
+        label: {ru: "Статья расходов", en: "Expense category"}
+        joins: []
+        column: "oe.expense_category"
+      department:
+        label: {ru: "Подразделение", en: "Department"}
+        joins: []
+        column: "oe.department"
+
+  production:
+    from: "demo.production_batches pb"
+    date_column: "pb.production_date"
+    filters: []
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN demo.products p ON p.product_id = pb.product_id", "JOIN demo.product_categories pc ON pc.category_id = p.category_id"]
+        column: "pc.name"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN demo.products p ON p.product_id = pb.product_id"]
+        column: "p.name"
+      production_line:
+        label: {ru: "Линия", en: "Production line"}
+        joins: ["JOIN demo.production_lines pl ON pl.line_id = pb.line_id"]
+        column: "pl.name"
+      shift:
+        label: {ru: "Смена", en: "Shift"}
+        joins: []
+        column: "pb.shift"
+
+  downtime:
+    from: "demo.line_downtime ld"
+    date_column: "ld.started_at"
+    filters: []
+    dimensions:
+      production_line:
+        label: {ru: "Линия", en: "Production line"}
+        joins: ["JOIN demo.production_lines pl ON pl.line_id = ld.line_id"]
+        column: "pl.name"
+      downtime_type:
+        label: {ru: "Тип простоя", en: "Downtime type"}
+        joins: []
+        column: "ld.downtime_type"
+      downtime_reason:
+        label: {ru: "Причина простоя", en: "Downtime reason"}
+        joins: []
+        column: "ld.reason"
+
+  purchases:
+    from: "demo.purchase_order_items poi JOIN demo.purchase_orders po ON po.purchase_order_id = poi.purchase_order_id JOIN demo.raw_materials rm ON rm.material_id = poi.material_id"
+    date_column: "po.order_date"
+    filters: ["po.status <> 'cancelled'"]
+    dimensions:
+      supplier:
+        label: {ru: "Поставщик", en: "Supplier"}
+        joins: ["JOIN demo.suppliers s ON s.supplier_id = po.supplier_id"]
+        column: "s.name"
+      material:
+        label: {ru: "Материал", en: "Material"}
+        joins: []
+        column: "rm.name"
+      material_type:
+        label: {ru: "Тип материала", en: "Material type"}
+        joins: []
+        column: "rm.material_type"
+
+  sales_plans:
+    from: "demo.sales_plans sp"
+    date_column: "sp.plan_month"
+    filters: []
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN demo.product_categories pc ON pc.category_id = sp.category_id"]
+        column: "pc.name"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN demo.regions r ON r.region_id = sp.region_id"]
+        column: "r.name"
+      macro_region:
+        label: {ru: "Макрорегион", en: "Macro region"}
+        joins: ["JOIN demo.regions r ON r.region_id = sp.region_id"]
+        column: "r.macro_region"
+
+  inventory:
+    from: "demo.inventory_snapshots inv"
+    date_column: "inv.snapshot_date"
+    filters: []
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN demo.products p ON p.product_id = inv.product_id", "JOIN demo.product_categories pc ON pc.category_id = p.category_id"]
+        column: "pc.name"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN demo.products p ON p.product_id = inv.product_id"]
+        column: "p.name"
+      warehouse:
+        label: {ru: "Склад", en: "Warehouse"}
+        joins: ["JOIN demo.warehouses w ON w.warehouse_id = inv.warehouse_id"]
+        column: "w.name"
+
+metrics:
+  revenue:
+    label: {ru: "Выручка", en: "Revenue"}
+    description: {ru: "Сумма продаж без НДС за вычетом скидок, без отменённых заказов; период по дате заказа", en: "Sales net of discounts, excl. VAT and cancelled orders; by order date"}
+    synonyms: ["выручка", "продажи", "оборот", "сколько продали", "revenue", "sales"]
+    unit: currency
+    better: higher
+    kind: simple
+    source: sales_items
+    expression: "SUM(soi.revenue_amount)"
+
+  cogs:
+    label: {ru: "Себестоимость продаж", en: "Cost of goods sold"}
+    description: {ru: "Производственная себестоимость проданных товаров (сырьё, упаковка, переработка) на дату заказа", en: "Production cost of goods sold at order date"}
+    synonyms: ["себестоимость", "cogs", "cost of goods"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: sales_items
+    expression: "SUM(soi.cost_amount)"
+
+  gross_profit:
+    label: {ru: "Валовая прибыль", en: "Gross profit"}
+    description: {ru: "Выручка минус себестоимость продаж", en: "Revenue minus cost of goods sold"}
+    synonyms: ["валовая прибыль", "gross profit"]
+    unit: currency
+    better: higher
+    kind: simple
+    source: sales_items
+    expression: "SUM(soi.revenue_amount) - SUM(soi.cost_amount)"
+
+  gross_margin_pct:
+    label: {ru: "Валовая маржа", en: "Gross margin"}
+    description: {ru: "Валовая прибыль / выручка, %", en: "Gross profit / revenue, %"}
+    synonyms: ["маржа", "маржинальность", "валовая маржа", "gross margin"]
+    unit: percent
+    better: higher
+    kind: ratio
+    numerator: gross_profit
+    denominator: revenue
+
+  operating_expenses:
+    label: {ru: "Операционные расходы", en: "Operating expenses"}
+    description: {ru: "Логистика, ФОТ непроизводственного персонала, электроэнергия, маркетинг, аренда, ремонт, прочее", en: "Logistics, non-production payroll, electricity, marketing, rent, repairs, other"}
+    synonyms: ["расходы", "операционные расходы", "opex", "затраты"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: expenses
+    expression: "SUM(oe.amount)"
+
+  write_off_cost:
+    label: {ru: "Списания", en: "Write-offs"}
+    description: {ru: "Себестоимость списанной готовой продукции", en: "Cost of written-off finished goods"}
+    synonyms: ["списания", "потери", "write-offs"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: write_offs
+    expression: "SUM(wo.cost_amount)"
+
+  operating_profit:
+    label: {ru: "Операционная прибыль", en: "Operating profit"}
+    description: {ru: "Валовая прибыль − операционные расходы − списания. «Прибыль» по умолчанию", en: "Gross profit − operating expenses − write-offs. Default meaning of 'profit'"}
+    synonyms: ["прибыль", "операционная прибыль", "profit", "operating profit"]
+    unit: currency
+    better: higher
+    kind: formula
+    formula: "gross_profit - operating_expenses - write_off_cost"
+
+  operating_margin_pct:
+    label: {ru: "Операционная маржа", en: "Operating margin"}
+    description: {ru: "Операционная прибыль / выручка, %", en: "Operating profit / revenue, %"}
+    synonyms: ["рентабельность", "операционная маржа", "operating margin"]
+    unit: percent
+    better: higher
+    kind: ratio
+    numerator: operating_profit
+    denominator: revenue
+
+  orders_count:
+    label: {ru: "Заказы", en: "Orders"}
+    description: {ru: "Количество неотменённых заказов клиентов", en: "Number of non-cancelled customer orders"}
+    synonyms: ["заказы", "количество заказов", "orders"]
+    unit: number
+    better: higher
+    kind: simple
+    source: sales_orders
+    expression: "COUNT(DISTINCT so.order_id)"
+
+  average_order_value:
+    label: {ru: "Средний чек заказа", en: "Average order value"}
+    description: {ru: "Выручка / количество заказов", en: "Revenue / number of orders"}
+    synonyms: ["средний чек", "средний заказ", "aov", "average order value"]
+    unit: currency
+    better: higher
+    kind: formula
+    formula: "revenue / orders_count"
+
+  units_sold:
+    label: {ru: "Продано упаковок", en: "Units sold"}
+    description: {ru: "Количество проданных упаковок", en: "Number of packages sold"}
+    synonyms: ["объём продаж", "штук", "упаковок", "units sold"]
+    unit: number
+    better: higher
+    kind: simple
+    source: sales_items
+    expression: "SUM(soi.quantity)"
+
+  active_customers:
+    label: {ru: "Активные клиенты", en: "Active customers"}
+    description: {ru: "Клиенты, сделавшие хотя бы один заказ в периоде", en: "Customers with at least one order in the period"}
+    synonyms: ["активные клиенты", "покупатели", "active customers"]
+    unit: number
+    better: higher
+    kind: simple
+    source: sales_orders
+    expression: "COUNT(DISTINCT so.customer_id)"
+
+  returns_amount:
+    label: {ru: "Возвраты", en: "Returns"}
+    description: {ru: "Сумма возвратов клиентам по дате возврата", en: "Refund amount by return date"}
+    synonyms: ["возвраты", "returns"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: returns
+    expression: "SUM(sr.refund_amount)"
+
+  return_rate_pct:
+    label: {ru: "Доля возвратов", en: "Return rate"}
+    description: {ru: "Возвраты / выручка, %", en: "Returns / revenue, %"}
+    synonyms: ["доля возвратов", "return rate"]
+    unit: percent
+    better: lower
+    kind: ratio
+    numerator: returns_amount
+    denominator: revenue
+
+  production_volume:
+    label: {ru: "Выпуск продукции", en: "Production volume"}
+    description: {ru: "Фактически произведено упаковок, включая брак", en: "Packages produced, incl. defects"}
+    synonyms: ["производство", "выпуск", "произвели", "production"]
+    unit: number
+    better: higher
+    kind: simple
+    source: production
+    expression: "SUM(pb.produced_quantity)"
+
+  defect_rate_pct:
+    label: {ru: "Доля брака", en: "Defect rate"}
+    description: {ru: "Брак / выпуск, %", en: "Defects / produced, %"}
+    synonyms: ["брак", "доля брака", "defect rate"]
+    unit: percent
+    better: lower
+    kind: simple
+    source: production
+    expression: "SUM(pb.defect_quantity) * 100.0 / NULLIF(SUM(pb.produced_quantity), 0)"
+
+  production_plan_attainment_pct:
+    label: {ru: "Выполнение плана производства", en: "Production plan attainment"}
+    description: {ru: "Фактический выпуск / плановый выпуск, %", en: "Produced / planned, %"}
+    synonyms: ["выполнение плана производства", "план производства"]
+    unit: percent
+    better: higher
+    kind: simple
+    source: production
+    expression: "SUM(pb.produced_quantity) * 100.0 / NULLIF(SUM(pb.planned_quantity), 0)"
+
+  downtime_hours:
+    label: {ru: "Часы простоя", en: "Downtime hours"}
+    description: {ru: "Суммарная длительность простоев линий, часов (по дате начала)", en: "Total line downtime, hours (by start date)"}
+    synonyms: ["простои", "простой", "downtime"]
+    unit: hours
+    better: lower
+    kind: simple
+    source: downtime
+    expression: "SUM(ld.duration_minutes) / 60.0"
+
+  purchase_amount:
+    label: {ru: "Закупки", en: "Purchases"}
+    description: {ru: "Сумма закупок материалов по дате заказа поставщику, без отменённых", en: "Purchases by PO date, excl. cancelled"}
+    synonyms: ["закупки", "purchases"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: purchases
+    expression: "SUM(poi.amount)"
+
+  avg_raw_milk_price:
+    label: {ru: "Средняя цена сырого молока", en: "Average raw milk price"}
+    description: {ru: "Средневзвешенная закупочная цена сырого молока, тенге за литр", en: "Weighted average raw milk purchase price, KZT per liter"}
+    synonyms: ["цена молока", "цена сырья", "закупочная цена молока", "raw milk price"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: purchases
+    expression: "SUM(poi.amount) FILTER (WHERE rm.name = 'Молоко сырое') / NULLIF(SUM(poi.quantity) FILTER (WHERE rm.name = 'Молоко сырое'), 0)"
+
+  sales_plan:
+    label: {ru: "План продаж", en: "Sales plan"}
+    description: {ru: "Плановая выручка за месяцы, начало которых попадает в период", en: "Planned revenue for months starting within the period"}
+    synonyms: ["план", "план продаж", "sales plan", "target"]
+    unit: currency
+    better: higher
+    kind: simple
+    source: sales_plans
+    expression: "SUM(sp.planned_revenue)"
+
+  sales_plan_attainment_pct:
+    label: {ru: "Выполнение плана продаж", en: "Sales plan attainment"}
+    description: {ru: "Выручка / план продаж, %. Для неполного месяца план берётся за весь месяц", en: "Revenue / sales plan, %. For a partial month the full-month plan is used"}
+    synonyms: ["выполнение плана", "план факт", "plan attainment"]
+    unit: percent
+    better: higher
+    kind: ratio
+    numerator: revenue
+    denominator: sales_plan
+
+  inventory_units:
+    label: {ru: "Остатки, упаковок", en: "Stock, units"}
+    description: {ru: "Остаток готовой продукции на последнюю дату среза в периоде", en: "Finished goods stock at the latest snapshot in the period"}
+    synonyms: ["остатки", "запасы", "stock", "inventory"]
+    unit: number
+    better: higher
+    kind: snapshot
+    source: inventory
+    expression: "SUM(inv.quantity_on_hand)"
+
+  inventory_below_reorder:
+    label: {ru: "Позиции ниже точки заказа", en: "Items below reorder point"}
+    description: {ru: "Число пар склад × товар с остатком ниже точки заказа на последнюю дату среза", en: "Warehouse × product pairs below reorder point at the latest snapshot"}
+    synonyms: ["дефицит", "ниже точки заказа", "нужно дозаказать", "low stock"]
+    unit: number
+    better: lower
+    kind: snapshot
+    source: inventory
+    expression: "COUNT(*) FILTER (WHERE inv.quantity_on_hand < inv.reorder_point)"
+
+  overdue_receivables:
+    label: {ru: "Просроченная дебиторка", en: "Overdue receivables"}
+    description: {ru: "Неоплаченная на сегодня сумма заказов, срок оплаты которых наступил в периоде и уже прошёл", en: "Unpaid amount of orders whose due date fell in the period and has passed"}
+    synonyms: ["дебиторка", "долги клиентов", "просрочка оплаты", "receivables", "overdue"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: receivables
+    expression: "SUM(soi.revenue_amount)"

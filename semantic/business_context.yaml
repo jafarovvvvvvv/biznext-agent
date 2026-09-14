@@ -1,0 +1,69 @@
+version: 1
+
+company:
+  name: {ru: "Demo Foods", en: "Demo Foods"}
+  industry: {ru: "Молочное производство", en: "Dairy manufacturing"}
+  description:
+    ru: >-
+      Вымышленный средний молочный завод в Казахстане (демо, синтетические данные). Закупает сырое молоко
+      у фермерских хозяйств, выпускает около 40 SKU в 7 категориях на 8 производственных линиях, хранит
+      продукцию на складе завода в Алматы и в 4 распределительных центрах, продаёт розничным сетям,
+      дистрибьюторам, HoReCa и независимым магазинам в 10 регионах.
+    en: >-
+      A fictional mid-size dairy plant in Kazakhstan (demo, synthetic data). Buys raw milk from farms,
+      produces about 40 SKUs in 7 categories on 8 lines, stores goods at the Almaty plant warehouse and
+      4 distribution centers, sells to retail chains, distributors, HoReCa and independent stores in 10 regions.
+
+currency:
+  code: KZT
+  symbol: "₸"
+  amounts_note: {ru: "Все денежные суммы в тенге без НДС", en: "All amounts are in KZT excluding VAT"}
+
+timezone: Asia/Almaty
+week_starts_on: monday
+
+glossary:
+  - term: {ru: "прибыль", en: "profit"}
+    meaning:
+      ru: "Без уточнения — операционная прибыль (метрика operating_profit) = валовая прибыль − операционные расходы − списания. Всегда называй, какую прибыль посчитал."
+      en: "Without qualification means operating profit (operating_profit) = gross profit − operating expenses − write-offs. Always state which profit was used."
+  - term: {ru: "выручка, продажи, оборот", en: "revenue, sales"}
+    meaning:
+      ru: "Сумма revenue_amount по неотменённым заказам (метрика revenue), период — по дате заказа."
+      en: "Sum of revenue_amount for non-cancelled orders (revenue), period by order date."
+  - term: {ru: "маржа, маржинальность", en: "margin"}
+    meaning:
+      ru: "Без уточнения — валовая маржа (gross_margin_pct) = валовая прибыль / выручка."
+      en: "Without qualification means gross margin (gross_margin_pct) = gross profit / revenue."
+  - term: {ru: "себестоимость", en: "cost of goods"}
+    meaning:
+      ru: "Производственная себестоимость проданных товаров (cogs): сырьё, упаковка и переработка. Операционные расходы в неё не входят."
+      en: "Production cost of goods sold (cogs): materials, packaging and conversion. Operating expenses are not included."
+  - term: {ru: "производство, выпуск", en: "production, output"}
+    meaning:
+      ru: "Фактический выпуск в упаковках (production_volume) по production_batches."
+      en: "Actual output in packages (production_volume) from production_batches."
+  - term: {ru: "остатки, запасы, склад", en: "stock, inventory"}
+    meaning:
+      ru: "Остатки готовой продукции на конец дня (inventory_snapshots); текущие — на последнюю дату среза."
+      en: "End-of-day finished goods stock (inventory_snapshots); current stock is the latest snapshot date."
+  - term: {ru: "дебиторка, долги клиентов", en: "receivables"}
+    meaning:
+      ru: "Неоплаченные заказы (paid_date IS NULL); просроченные — payment_due_date раньше текущей даты."
+      en: "Unpaid orders (paid_date IS NULL); overdue when payment_due_date is before today."
+  - term: {ru: "план", en: "plan, target"}
+    meaning:
+      ru: "План продаж — таблица sales_plans (месяц × регион клиента × категория), выполнение = выручка / план."
+      en: "Sales plan — sales_plans (month × customer region × category), attainment = revenue / plan."
+
+analysis_guidelines:
+  - ru: "Текущий месяц неполный: сравнивай его с тем же числом дней прошлого месяца или явно предупреждай о неполном периоде."
+    en: "The current month is incomplete: compare with the same number of days of the previous month or clearly warn about it."
+  - ru: "Причины изменения прибыли раскладывай на составляющие: выручка, себестоимость (цены сырья), операционные расходы, списания."
+    en: "Break profit changes down into revenue, cost of goods (raw material prices), operating expenses and write-offs."
+  - ru: "Регион продаж — это регион клиента (customers.region_id), а не склад отгрузки."
+    en: "Sales region is the customer's region (customers.region_id), not the shipping warehouse."
+  - ru: "Отменённые заказы (status = 'cancelled') не входят в выручку и объёмы продаж."
+    en: "Cancelled orders (status = 'cancelled') are excluded from revenue and sales volume."
+  - ru: "Себестоимость в sales_order_items.unit_cost уже учитывает цену сырья на дату заказа — рост закупочных цен виден в cogs."
+    en: "sales_order_items.unit_cost already reflects raw material prices at the order date — purchase price growth shows up in cogs."

@@ -1,0 +1,58 @@
+# Правила AI Insights. Факты считаются детерминированно (SQL/Python), LLM только формулирует текст.
+version: 1
+max_insights: 5
+
+rules:
+  - {type: metric_change, metric: operating_profit, min_abs_change_pct: 3}
+  - {type: metric_change, metric: revenue, min_abs_change_pct: 3}
+  - {type: metric_change, metric: gross_margin_pct, min_abs_change_pct: 3}
+  - {type: dimension_movers, metric: revenue, dimension: category, top: 2, min_abs_change_pct: 5}
+  - {type: dimension_movers, metric: revenue, dimension: region, top: 2, min_abs_change_pct: 10}
+  - {type: metric_change, metric: write_off_cost, min_abs_change_pct: 15}
+
+  - type: sql_check
+    key: low_stock
+    severity: warning
+    title: {ru: "Запасы ниже точки заказа", en: "Stock below reorder point"}
+    sql: >-
+      SELECT p.name AS product, w.name AS warehouse, inv.quantity_on_hand, inv.reorder_point
+      FROM demo.inventory_snapshots inv
+      JOIN demo.products p ON p.product_id = inv.product_id
+      JOIN demo.warehouses w ON w.warehouse_id = inv.warehouse_id
+      WHERE inv.snapshot_date = (SELECT max(snapshot_date) FROM demo.inventory_snapshots)
+        AND inv.quantity_on_hand < inv.reorder_point
+      ORDER BY inv.quantity_on_hand::numeric / NULLIF(inv.reorder_point, 0), p.name
+      LIMIT 10
+    suggested_question: {ru: "Какие товары нужно срочно дозаказать и на каких складах?", en: "Which products need urgent replenishment and where?"}
+
+  - type: sql_check
+    key: overdue_receivables
+    severity: warning
+    title: {ru: "Просроченная оплата от клиентов", en: "Overdue customer payments"}
+    sql: >-
+      SELECT c.name AS customer, count(DISTINCT so.order_id) AS orders,
+             round(sum(soi.revenue_amount), 2) AS amount, max(current_date - so.payment_due_date) AS max_days_overdue
+      FROM demo.sales_orders so
+      JOIN demo.sales_order_items soi ON soi.order_id = so.order_id
+      JOIN demo.customers c ON c.customer_id = so.customer_id
+      WHERE so.status <> 'cancelled' AND so.paid_date IS NULL AND so.payment_due_date < current_date - 14
+      GROUP BY c.name
+      ORDER BY amount DESC
+      LIMIT 5
+    suggested_question: {ru: "Кто из клиентов просрочил оплату и на какую сумму?", en: "Which customers have overdue payments and how much?"}
+
+  - type: sql_check
+    key: unplanned_downtime
+    severity: negative
+    title: {ru: "Длительные внеплановые простои", en: "Long unplanned downtime"}
+    sql: >-
+      SELECT pl.name AS line, count(*) AS incidents, round(sum(ld.duration_minutes) / 60.0, 1) AS hours,
+             string_agg(DISTINCT ld.reason, ', ') AS reasons
+      FROM demo.line_downtime ld
+      JOIN demo.production_lines pl ON pl.line_id = ld.line_id
+      WHERE ld.downtime_type = 'unplanned' AND ld.started_at >= current_date - 45
+      GROUP BY pl.name
+      HAVING sum(ld.duration_minutes) > 480
+      ORDER BY hours DESC
+      LIMIT 5
+    suggested_question: {ru: "Как простои линий повлияли на выпуск и продажи?", en: "How did line downtime affect output and sales?"}
