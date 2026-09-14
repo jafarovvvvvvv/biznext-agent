@@ -19,6 +19,8 @@ export default defineConfig(() => ({
   build: {
     target: "es2022",
     sourcemap: false,
+    // recharts + markdown are one vendor chunk for the two main screens
+    chunkSizeWarningLimit: 1000,
   },
   test: {
     include: ["src/**/*.test.ts"],

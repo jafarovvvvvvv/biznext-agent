@@ -48,7 +48,7 @@ function useXFormatter(spec: Pick<ChartSpec, "x_type" | "data" | "x_key">) {
         month: "short",
       });
     }
-    return text.length > 18 ? `${text.slice(0, 17)}…` : text;
+    return text.length > 20 ? `${text.slice(0, 19)}…` : text;
   };
 }
 
@@ -88,8 +88,9 @@ export function ChartView({ spec, height = 280 }: { spec: ChartSpec; height?: nu
     const series = spec.series[0];
     const total = data.reduce((sum, row) => sum + (Number(row[series.key]) || 0), 0);
     return (
-      <div className="flex flex-col items-center gap-4 sm:flex-row">
-        <div style={{ height, width: "100%", maxWidth: height }}>
+      <div className="@container">
+      <div className="flex flex-col items-center gap-4 @lg:flex-row">
+        <div className="shrink-0" style={{ height: Math.min(height, 240), width: Math.min(height, 240) }}>
           <ResponsiveContainer>
             <PieChart>
               <Pie data={data} dataKey={series.key} nameKey={spec.x_key} innerRadius="58%" outerRadius="92%"
@@ -118,6 +119,7 @@ export function ChartView({ spec, height = 280 }: { spec: ChartSpec; height?: nu
           })}
         </ul>
       </div>
+      </div>
     );
   }
 
@@ -140,6 +142,35 @@ export function ChartView({ spec, height = 280 }: { spec: ChartSpec; height?: nu
       )}
     </>
   );
+
+  if (spec.type === "bar" && spec.x_type === "category") {
+    // horizontal bars keep long category names readable
+    const rowHeight = spec.series.length > 1 ? 34 : 28;
+    const barHeight = Math.max(height, data.length * rowHeight + 24);
+    return (
+      <div style={{ height: barHeight }}>
+        <ResponsiveContainer>
+          <BarChart data={data} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }} barCategoryGap="24%">
+            <CartesianGrid horizontal={false} stroke="var(--color-line)" />
+            <XAxis type="number" tickFormatter={(v: number) => formatAxis(v, unit, lang)} tick={AXIS_TICK} tickLine={false}
+                   axisLine={false} />
+            <YAxis type="category" dataKey={spec.x_key} tickFormatter={xFormat} tick={{ ...AXIS_TICK, fill: "var(--color-ink-soft)" }}
+                   tickLine={false} axisLine={false} width={150} interval={0} />
+            <Tooltip cursor={{ fill: "var(--color-sunken)", opacity: 0.6 }}
+                     content={(props) => <ChartTooltip {...(props as TooltipContentProps<number, string>)} series={spec.series} xFormat={xFormat} />} />
+            {showLegend && (
+              <Legend verticalAlign="top" align="right" height={28} iconType="circle" iconSize={8}
+                      formatter={(value: string) => <span className="text-xs text-ink-soft">{spec.series.find((s) => s.key === value)?.label ?? value}</span>} />
+            )}
+            {spec.series.map((s, index) => (
+              <Bar key={s.key} dataKey={s.key} fill={CHART_COLORS[index % CHART_COLORS.length]} radius={[0, 4, 4, 0]}
+                   maxBarSize={22} isAnimationActive={false} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
 
   return (
     <div style={{ height }}>

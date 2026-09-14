@@ -418,7 +418,16 @@ class AgentTool(Protocol):
 - Стабильный префикс для кэша: tools → system (без текущей даты); дата и контекст периода —
   в первом user-сообщении хода.
 
-### 7.4 OpenAI-compatible provider
+### 7.4 OpenAI providers
+
+`LLM_PROVIDER=openai` — официальный endpoint через **Responses API** (`llm/openai_responses_provider.py`):
+reasoning-модели не принимают function tools вместе с reasoning в Chat Completions. История
+передаётся без хранения на стороне OpenAI (`store=false`, `include=["reasoning.encrypted_content"]`),
+выходные items модели возвращаются в следующий запрос без изменений.
+
+`LLM_PROVIDER=openai_compatible` — Chat Completions (ниже).
+
+#### OpenAI-compatible (Chat Completions)
 
 SDK `openai`, `AsyncOpenAI(api_key, base_url=LLM_BASE_URL or None)`, Chat Completions с `tools`
 (function calling). Маппинг нормализованных сообщений ↔ `assistant.tool_calls` / `role: tool`.

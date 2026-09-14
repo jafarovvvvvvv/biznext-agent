@@ -18,8 +18,8 @@ export function AskBox({ onAsk, busy, onStop, autoFocus, size = "md", initialVal
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+    el.style.height = "0px"; // measure content height, not the stretched box
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 40), 176)}px`;
   }, [value]);
 
   const submit = (event?: FormEvent) => {

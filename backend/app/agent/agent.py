@@ -95,8 +95,10 @@ class DataAgent:
         counters = {"llm": 0, "tools": 0, "sql": 0, "retries": 0}
 
         def finish(status: str, response: dict[str, Any] | None, **extra: Any) -> AgentRun:
+            # every executed SQL: agent queries (incl. failed attempts) + queries behind calculate_metric
+            metric_sql = sum(len(r.sql) for r in results.all() if r.kind == "metric")
             return AgentRun(status=status, response=response, steps=trace.steps, usage=usage,
-                            llm_calls=counters["llm"], tool_calls=counters["tools"], sql_count=counters["sql"],
+                            llm_calls=counters["llm"], tool_calls=counters["tools"], sql_count=counters["sql"] + metric_sql,
                             retry_count=counters["retries"], execution_ms=int((time.perf_counter() - started) * 1000),
                             **extra)
 

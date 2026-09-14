@@ -1,14 +1,17 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { AppShell } from "./components/layout/AppShell";
 import { AgentPage } from "./pages/AgentPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { DataSourcesPage } from "./pages/DataSourcesPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { TraceDetailPage } from "./pages/TraceDetailPage";
-import { TracesPage } from "./pages/TracesPage";
+
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+const DataSourcesPage = lazy(() => import("./pages/DataSourcesPage").then((m) => ({ default: m.DataSourcesPage })));
+const TracesPage = lazy(() => import("./pages/TracesPage").then((m) => ({ default: m.TracesPage })));
+const TraceDetailPage = lazy(() => import("./pages/TraceDetailPage").then((m) => ({ default: m.TraceDetailPage })));
 
 export function App() {
   return (
+    <Suspense fallback={null}>
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<DashboardPage />} />
@@ -20,5 +23,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }
