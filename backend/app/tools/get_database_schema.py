@@ -37,7 +37,9 @@ def describe_schema(ctx: ToolContext, schema: SchemaInfo) -> dict[str, Any]:
             entry["business_meaning"] = doc.business_meaning.get(lang)
         if table.row_count is not None:
             entry["approx_rows"] = table.row_count
-        entry["columns"] = [_column_line(ctx, table, c.name, c.type, c.description) for c in table.columns]
+        # columns starting with "_" are technical load metadata of canonical tables (_run_id, _loaded_at)
+        entry["columns"] = [_column_line(ctx, table, c.name, c.type, c.description) for c in table.columns
+                            if not c.name.startswith("_")]
         if table.foreign_keys:
             entry["foreign_keys"] = [f"{fk.column} -> {fk.ref_table}.{fk.ref_column}" for fk in table.foreign_keys]
         tables.append(entry)

@@ -1,0 +1,241 @@
+# Маппинг 1С → BizNext Canonical Contract v1  (docs/CONNECTORS.md)
+#
+# Конфигурация: объекты в стиле 1С:ERP / 1С:Управление торговлей 11, опубликованные через
+# стандартный интерфейс OData (standard.odata). Для другой конфигурации клиента (БП 3.0, УНФ,
+# доработанная ERP) копируется этот файл и меняются имена объектов и реквизитов — код коннектора
+# и BizNext не меняется.
+#
+# Коннектор запрашивает у 1С ТОЛЬКО реквизиты, перечисленные здесь ($select). Всё, чего нет
+# в маппинге (например, оклады сотрудников), не покидает 1С даже в памяти коннектора.
+#
+# Выражения полей:
+#   Реквизит                      — реквизит шапки;  line.Реквизит — реквизит строки табличной части
+#   {const: v}                    — константа
+#   {lookup: Объект, key: путь, attr: Реквизит[, then: {lookup, attr}]}  — значение из справочника/регистра
+#   {coalesce: [выр, выр]}        — первое непустое
+#   {not: путь}                   — логическое НЕ
+#   {expr: "a - b"}               — арифметика (+ - * /) над путями
+#   {format: "{Ref_Key}:{line.LineNumber}"} — строка
+#   {enriched: имя}               — значение из блока enrich
+#   map: {значение_1С: значение}  — перекодировка результата (можно добавить к любому выражению)
+# Пометки `custom` — реквизиты доработанной конфигурации конкретного предприятия.
+version: 1
+configuration: "1С:ERP Управление предприятием 2 (демо-эмуляция Demo Foods)"
+
+entities:
+  products:
+    - object: Catalog_Номенклатура
+      filter: "IsFolder eq false"
+      fields:
+        id: Ref_Key
+        code: Code
+        sku: Артикул
+        name: Description
+        item_type: {lookup: Catalog_ВидыНоменклатуры, key: ВидНоменклатуры_Key, attr: ТипНоменклатуры,
+                    map: {Товар: goods, Материал: material, Услуга: service}}
+        category:
+          coalesce:
+            - {lookup: Catalog_ТоварныеКатегории, key: ТоварнаяКатегория_Key, attr: Description}
+            - {lookup: Catalog_ВидыНоменклатуры, key: ВидНоменклатуры_Key, attr: Description}
+        unit: {lookup: Catalog_УпаковкиЕдиницыИзмерения, key: ЕдиницаИзмерения_Key, attr: Description}
+        is_active: {not: DeletionMark}
+
+  customers:
+    - object: Catalog_Партнеры
+      filter: "IsFolder eq false and Клиент eq true"
+      fields:
+        id: Ref_Key
+        code: Code
+        name: Description
+        segment: {lookup: Catalog_Партнеры, key: Parent_Key, attr: Description}
+        region: {lookup: Catalog_БизнесРегионы, key: БизнесРегион_Key, attr: Description}
+        macro_region: {lookup: Catalog_БизнесРегионы, key: БизнесРегион_Key, attr: Parent_Key,
+                       then: {lookup: Catalog_БизнесРегионы, attr: Description}}
+        manager: {lookup: Catalog_Пользователи, key: ОсновнойМенеджер_Key, attr: Description}
+        tax_id: БИН
+        is_active: {not: DeletionMark}
+
+  suppliers:
+    - object: Catalog_Партнеры
+      filter: "IsFolder eq false and Поставщик eq true"
+      fields:
+        id: Ref_Key
+        code: Code
+        name: Description
+        region: {lookup: Catalog_БизнесРегионы, key: БизнесРегион_Key, attr: Description}
+        supplier_type: {lookup: Catalog_Партнеры, key: Parent_Key, attr: Description}
+        tax_id: БИН
+        is_active: {not: DeletionMark}
+
+  warehouses:
+    - object: Catalog_Склады
+      filter: "IsFolder eq false"
+      fields:
+        id: Ref_Key
+        code: Code
+        name: Description
+        region: {lookup: Catalog_БизнесРегионы, key: БизнесРегион_Key, attr: Description}
+        warehouse_type: {lookup: Catalog_Склады, key: Parent_Key, attr: Description}
+
+  employees:
+    - object: Catalog_Сотрудники
+      filter: "IsFolder eq false"
+      fields:
+        id: Ref_Key
+        name: Description
+        department: {lookup: Catalog_СтруктураПредприятия, key: Подразделение_Key, attr: Description}
+        position: {lookup: Catalog_Должности, key: Должность_Key, attr: Description}
+        hired_at: ДатаПриема
+        terminated_at: ДатаУвольнения
+
+  sales:
+    - object: Document_РеализацияТоваровУслуг
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: Товары
+      enrich:
+        cost:   # себестоимость строк — из регистра ВыручкаИСебестоимостьПродаж по регистратору и номенклатуре
+          object: AccumulationRegister_ВыручкаИСебестоимостьПродаж_RecordType
+          filter: "Active eq true"
+          date: Period
+          order_by: "Recorder,LineNumber"
+          match: {Recorder: Ref_Key, Номенклатура_Key: line.Номенклатура_Key}
+          sum: Стоимость
+          allocate_by: {register: Количество, line: line.Количество}
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        document_number: Number
+        date: Date
+        operation: {const: sale}
+        customer_id: Партнер_Key
+        warehouse_id: Склад_Key
+        product_id: line.Номенклатура_Key
+        manager: {lookup: Catalog_Пользователи, key: Менеджер_Key, attr: Description}
+        quantity: line.Количество
+        amount: {expr: "line.Сумма - line.СуммаНДС"}
+        vat_amount: line.СуммаНДС
+        cost_amount: {enriched: cost}
+        due_date: ДатаПлатежа
+    - object: Document_ВозвратТоваровОтКлиента
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: Товары
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        document_number: Number
+        date: Date
+        operation: {const: return}
+        customer_id: Партнер_Key
+        warehouse_id: Склад_Key
+        product_id: line.Номенклатура_Key
+        manager: {lookup: Catalog_Пользователи, key: Менеджер_Key, attr: Description}
+        quantity: line.Количество
+        amount: {expr: "line.Сумма - line.СуммаНДС"}
+        vat_amount: line.СуммаНДС
+        base_document_id: ДокументРеализации_Key
+
+  purchases:
+    - object: Document_ПоступлениеТоваровУслуг
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: Товары
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        document_number: Number
+        date: Date
+        supplier_id: Партнер_Key
+        warehouse_id: Склад_Key
+        product_id: line.Номенклатура_Key
+        quantity: line.Количество
+        amount: {expr: "line.Сумма - line.СуммаНДС"}
+        vat_amount: line.СуммаНДС
+
+  production:
+    - object: Document_ВыпускПродукции
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: Продукция
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        document_number: Number
+        date: Date
+        work_center: {lookup: Catalog_СтруктураПредприятия, key: Подразделение_Key, attr: Description}
+        warehouse_id: Склад_Key
+        product_id: line.Номенклатура_Key
+        quantity: line.Количество
+        planned_quantity: line.КоличествоПлан     # custom
+        defect_quantity: line.КоличествоБрак      # custom
+        shift: Смена                              # custom
+
+  payments:
+    - object: Document_ПоступлениеБезналичныхДенежныхСредств
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: РасшифровкаПлатежа
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        document_number: Number
+        date: Date
+        direction: {const: incoming}
+        counterparty_type: {const: customer}
+        counterparty_id: Партнер_Key
+        settlement_document_id: line.ОбъектРасчетов_Key
+        amount: line.Сумма
+
+  costs:
+    - object: Document_ОтражениеПрочихДоходовИРасходов
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: ПрочиеРасходы
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        date: Date
+        cost_item: {lookup: Catalog_СтатьиРасходов, key: line.СтатьяРасходов_Key, attr: Description}
+        department: {lookup: Catalog_СтруктураПредприятия, key: line.Подразделение_Key, attr: Description}
+        amount: line.Сумма
+        description: line.Содержание
+
+  write_offs:
+    - object: Document_СписаниеНедостачТоваров
+      filter: "Posted eq true and DeletionMark eq false"
+      date: Date
+      lines: Товары
+      fields:
+        id: {format: "{Ref_Key}:{line.LineNumber}"}
+        document_id: Ref_Key
+        date: Date
+        warehouse_id: Склад_Key
+        product_id: line.Номенклатура_Key
+        quantity: line.Количество
+        reason: ПричинаСписания
+        cost_amount: line.Стоимость
+
+  inventory:
+    - balance: AccumulationRegister_ТоварыНаСкладах
+      snapshots: {history: month_end, recent_days: 62}
+      fields:
+        warehouse_id: Склад_Key
+        product_id: Номенклатура_Key
+        quantity: ВНаличииBalance
+        reorder_point: {lookup: InformationRegister_НормативыЗапасов, key: [Склад_Key, Номенклатура_Key], attr: МинимальныйЗапас}
+      # позиции с нормативом запаса, но без остатка, 1С в виртуальной таблице остатков не возвращает —
+      # добавляем их с нулевым количеством, иначе дефицит не будет виден
+      complete_from:
+        object: InformationRegister_НормативыЗапасов
+        key: [Склад_Key, Номенклатура_Key]
+        defaults: {quantity: 0}
+
+  receivables:
+    - balance: AccumulationRegister_РасчетыСКлиентамиПоСрокам
+      snapshots: {history: month_end, recent_days: 1}
+      fields:
+        customer_id: Партнер_Key
+        document_id: ОбъектРасчетов_Key
+        due_date: ДатаПлановогоПогашения
+        amount_due: СуммаBalance

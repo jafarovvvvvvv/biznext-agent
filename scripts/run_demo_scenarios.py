@@ -1,7 +1,9 @@
 """Runs demo scenarios end-to-end through the public API (SSE stream) and writes a JSON report.
 
 Usage (inside the backend container, the web service proxies /api):
-    python run_demo_scenarios.py http://web /tmp/demo_report.json
+    python run_demo_scenarios.py http://web /tmp/demo_report.json [scenario,…|all] [source_id]
+
+With source_id = onec_demo the 1C-connector scenarios (§56) run against the canonical 1C source.
 
 Each scenario is a list of questions asked in one conversation (follow-ups share context).
 This calls the real LLM provider and costs money.
@@ -37,9 +39,23 @@ SCENARIOS: list[tuple[str, list[str]]] = [
                    "А если сравнить с прошлым месяцем?"]),
 ]
 
+# §56: questions a company director asks once BizNext is connected to their 1C
+ONEC_SCENARIOS: list[tuple[str, list[str]]] = [
+    ("today", ["Сколько продали сегодня?"]),
+    ("pareto", ["Какие товары дают 80% прибыли?"]),
+    ("causal_month", ["Почему прибыль в этом месяце ниже прошлого?"]),
+    ("stock_out", ["Какие остатки скоро закончатся?"]),
+    ("lost_customers", ["Какие клиенты перестали покупать?"]),
+    ("cost_growth", ["Какая себестоимость выросла сильнее всего?"]),
+    ("attention", ["Что сейчас требует моего внимания?"]),
+    ("turnover", ["Какая оборачиваемость запасов и дебиторской задолженности за прошлый месяц?"]),
+    ("not_in_1c", ["Как простои производственных линий повлияли на выпуск в прошлом месяце?"]),
+]
 
-def ask(base: str, question: str, conversation_id: str | None) -> dict[str, Any]:
-    body = json.dumps({"question": question, "conversation_id": conversation_id, "lang": "ru"}).encode()
+
+def ask(base: str, question: str, conversation_id: str | None, source_id: str | None = None) -> dict[str, Any]:
+    body = json.dumps({"question": question, "conversation_id": conversation_id, "lang": "ru",
+                       "source_id": source_id}).encode()
     request = urllib.request.Request(f"{base}/api/agent/ask/stream", data=body,
                                      headers={"Content-Type": "application/json", "Accept": "text/event-stream"})
     started = time.time()
@@ -74,15 +90,17 @@ def trace(base: str, trace_id: str) -> dict[str, Any]:
 def main() -> int:
     base = sys.argv[1] if len(sys.argv) > 1 else "http://web"
     out = sys.argv[2] if len(sys.argv) > 2 else "/tmp/demo_report.json"
-    only = set(sys.argv[3].split(",")) if len(sys.argv) > 3 else None
+    only = set(sys.argv[3].split(",")) if len(sys.argv) > 3 and sys.argv[3] != "all" else None
+    source_id = sys.argv[4] if len(sys.argv) > 4 else None
+    scenarios = ONEC_SCENARIOS if source_id == "onec_demo" else SCENARIOS
     report = []
-    for name, questions in SCENARIOS:
+    for name, questions in scenarios:
         if only and name not in only:
             continue
         conversation_id = None
         for question in questions:
             try:
-                item = ask(base, question, conversation_id)
+                item = ask(base, question, conversation_id, source_id)
             except Exception as exc:  # noqa: BLE001 - keep running other scenarios
                 item = {"question": question, "error": {"message": repr(exc)}}
             final = item.get("final") or {}

@@ -1,0 +1,35 @@
+# Источники данных BizNext (docs/CONNECTORS.md, §56).
+#
+# storage: direct    — агент читает таблицы источника напрямую (read-only роль PostgreSQL);
+#          canonical — данные приходят через BizNext Connector в канонические таблицы
+#                      (контракт contracts/canonical/v1.yaml), агент читает только их.
+# semantic — каталоги семантического слоя; файл ищется по порядку, поэтому источник может
+#            переопределить часть стандартного пакета (например, business_context.yaml).
+#            В YAML пакета ${schema} заменяется на схему источника.
+version: 1
+default: demo_postgres
+
+sources:
+  demo_postgres:
+    type: postgresql
+    storage: direct
+    mode: demo
+    schema: demo
+    semantic: [demo_postgres]
+    name: {ru: "Demo Foods · PostgreSQL", en: "Demo Foods · PostgreSQL"}
+    description:
+      ru: "Демо-база предприятия (synthetic data): агент читает таблицы PostgreSQL напрямую под read-only ролью."
+      en: "Demo company database (synthetic data): the agent reads PostgreSQL tables directly under a read-only role."
+
+  onec_demo:
+    type: 1c
+    storage: canonical
+    mode: demo
+    schema: onec_demo
+    semantic: [onec_demo, packs/standard]
+    name: {ru: "Demo Foods · 1С (демо-режим)", en: "Demo Foods · 1C (demo mode)"}
+    description:
+      ru: "Тот же бизнес, но данные идут из 1С: эмулятор публикации OData → BizNext Connector (только чтение) → канонические таблицы → стандартные метрики."
+      en: "The same business, but the data comes from 1C: OData publication emulator → BizNext Connector (read-only) → canonical tables → standard metrics."
+    entities: [products, customers, suppliers, warehouses, employees, sales, purchases, production, payments, costs,
+               write_offs, inventory, receivables]

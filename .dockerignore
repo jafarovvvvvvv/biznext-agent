@@ -1,0 +1,7 @@
+# Контекст сборки корня используется только образом connector (ему нужен контракт contracts/).
+*
+!contracts
+!connector
+connector/tests
+**/__pycache__
+**/.pytest_cache

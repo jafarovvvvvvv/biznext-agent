@@ -1,0 +1,57 @@
+# Стандартные правила AI Insights поверх канонических данных. Факты — SQL/Python, LLM только формулирует.
+version: 1
+max_insights: 5
+
+rules:
+  - {type: metric_change, metric: operating_profit, min_abs_change_pct: 3}
+  - {type: metric_change, metric: revenue, min_abs_change_pct: 3}
+  - {type: metric_change, metric: gross_margin_pct, min_abs_change_pct: 3}
+  - {type: dimension_movers, metric: revenue, dimension: category, top: 2, min_abs_change_pct: 5}
+  - {type: dimension_movers, metric: revenue, dimension: region, top: 2, min_abs_change_pct: 10}
+  - {type: metric_change, metric: write_off_cost, min_abs_change_pct: 15}
+
+  - type: sql_check
+    key: low_stock
+    severity: warning
+    title: {ru: "Остатки ниже минимального запаса", en: "Stock below minimum"}
+    sql: >-
+      SELECT p.name AS product, w.name AS warehouse, inv.quantity, inv.reorder_point
+      FROM ${schema}.inventory inv
+      JOIN ${schema}.products p ON p.id = inv.product_id
+      JOIN ${schema}.warehouses w ON w.id = inv.warehouse_id
+      WHERE inv.snapshot_date = (SELECT max(snapshot_date) FROM ${schema}.inventory)
+        AND inv.reorder_point IS NOT NULL AND inv.quantity < inv.reorder_point
+      ORDER BY inv.quantity / NULLIF(inv.reorder_point, 0), p.name
+      LIMIT 10
+    suggested_question: {ru: "Какие остатки скоро закончатся?", en: "Which stock will run out soon?"}
+
+  - type: sql_check
+    key: overdue_receivables
+    severity: warning
+    title: {ru: "Просроченная задолженность клиентов", en: "Overdue customer debt"}
+    sql: >-
+      SELECT c.name AS customer, count(*) AS documents, round(sum(rc.amount_due), 2) AS amount,
+             max(rc.snapshot_date - rc.due_date) AS max_days_overdue
+      FROM ${schema}.receivables rc
+      JOIN ${schema}.customers c ON c.id = rc.customer_id
+      WHERE rc.snapshot_date = (SELECT max(snapshot_date) FROM ${schema}.receivables)
+        AND rc.due_date < rc.snapshot_date - 14
+      GROUP BY c.name
+      ORDER BY amount DESC
+      LIMIT 5
+    suggested_question: {ru: "Кто из клиентов просрочил оплату и на какую сумму?", en: "Which customers are overdue and by how much?"}
+
+  - type: sql_check
+    key: lost_customers
+    severity: negative
+    title: {ru: "Клиенты перестали покупать", en: "Customers stopped buying"}
+    sql: >-
+      SELECT c.name AS customer, round(sum(s.amount), 2) AS revenue, max(s.date) AS last_sale
+      FROM ${schema}.sales s
+      JOIN ${schema}.customers c ON c.id = s.customer_id
+      WHERE s.operation = 'sale' AND s.date >= current_date - 120
+      GROUP BY c.name
+      HAVING max(s.date) < current_date - 30 AND sum(s.amount) > 1000000
+      ORDER BY revenue DESC
+      LIMIT 5
+    suggested_question: {ru: "Какие клиенты перестали покупать?", en: "Which customers stopped buying?"}

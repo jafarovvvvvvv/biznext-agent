@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowRight, Sparkles, TrendingDown, TrendingUp, Info } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { useDashboard, useInsights } from "../api/hooks";
+import { useActiveSource, useDashboard, useInsights } from "../api/hooks";
 import type { Insight, Kpi } from "../api/types";
 import { AskBox } from "../components/AskBox";
 import { ChartView, Sparkline } from "../components/charts";
@@ -65,6 +65,7 @@ export function DashboardPage() {
   const { t, lang } = useI18n();
   const navigate = useNavigate();
   const [period, setPeriod] = useState<string | null>(null);
+  const { source } = useActiveSource();
   const dashboard = useDashboard(period);
   const insights = useInsights(dashboard.data?.period.key ?? period);
   const askAgent = (question: string) => navigate("/agent", { state: { question } });
@@ -75,7 +76,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow={data?.period ? `${data.period.label}${data.period.is_partial ? ` · ${t("dashboard.partial")}` : ""}` : undefined}
         title={t("dashboard.title")}
-        subtitle={t("dashboard.subtitle")}
+        subtitle={source ? `${t("dashboard.subtitle")} · ${t("dashboard.source")}: ${source.name}` : t("dashboard.subtitle")}
         actions={
           data && (
             <div className="flex flex-wrap gap-1 rounded-xl border border-line bg-surface p-1" role="group">

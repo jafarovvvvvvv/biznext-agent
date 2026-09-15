@@ -19,6 +19,11 @@ def lang_param(lang: str = Query("ru")) -> str:
     return "en" if lang == "en" else "ru"
 
 
+def source_param(source: str | None = Query(None, max_length=64)) -> str | None:
+    """Data source id (semantic/sources.yaml); empty = the default source."""
+    return source or None
+
+
 def require_admin(request: Request, x_admin_token: str | None = Header(default=None)) -> None:
     container: Container = request.app.state.container
     expected = container.settings.admin_token_value

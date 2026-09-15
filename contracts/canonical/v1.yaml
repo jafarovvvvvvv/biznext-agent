@@ -1,0 +1,239 @@
+# BizNext Canonical Data Contract v1  (docs/CONNECTORS.md, §56)
+#
+# Универсальные сущности предприятия, не зависящие от учётной системы. Любой коннектор
+# (1С, MySQL, MS SQL, Excel, Google Sheets, REST API) переводит данные своей системы в эти
+# сущности, а BizNext Semantic Layer считает стандартные метрики только по ним.
+# Поэтому новый источник = новый адаптер + маппинг; агент и метрики не переписываются.
+#
+# Типы: string | integer | decimal | date | boolean.  Все идентификаторы — строки
+# (у 1С это GUID ссылки, у SQL-источника — первичный ключ, приведённый к строке).
+# Суммы — в валюте учёта предприятия. `amount` — без НДС, `vat_amount` — НДС отдельно.
+#
+# load: replace_all    — справочник целиком заменяется при каждой выгрузке;
+#       replace_window — документы/срезы заменяются в окне дат [from, to) по полю window_field:
+#                        удалённые и распроведённые в учётной системе документы исчезают.
+version: "1.0"
+
+entities:
+  # ------------------------------------------------------------------ справочники
+  products:
+    label: {ru: "Номенклатура", en: "Products"}
+    description: {ru: "Товары, материалы и услуги. Материалы (item_type = material) — то, что закупается для производства.", en: "Goods, materials and services"}
+    kind: catalog
+    load: replace_all
+    key: [id]
+    fields:
+      id:        {type: string, required: true, description: {ru: "Идентификатор позиции номенклатуры"}}
+      code:      {type: string, description: {ru: "Код в учётной системе"}}
+      sku:       {type: string, description: {ru: "Артикул"}}
+      name:      {type: string, required: true, description: {ru: "Наименование"}}
+      item_type: {type: string, required: true, enum: [goods, material, service], description: {ru: "Вид: goods — готовая продукция/товар, material — сырьё, ингредиенты, упаковка; service — услуга"}}
+      category:  {type: string, description: {ru: "Товарная категория (для материалов — вид материала)"}}
+      unit:      {type: string, description: {ru: "Единица измерения"}}
+      is_active: {type: boolean, description: {ru: "Позиция используется (не помечена на удаление)"}}
+
+  customers:
+    label: {ru: "Клиенты", en: "Customers"}
+    description: {ru: "Покупатели (партнёры-клиенты)", en: "Customers"}
+    kind: catalog
+    load: replace_all
+    key: [id]
+    fields:
+      id:           {type: string, required: true, description: {ru: "Идентификатор клиента"}}
+      code:         {type: string, description: {ru: "Код в учётной системе"}}
+      name:         {type: string, required: true, description: {ru: "Наименование клиента"}}
+      segment:      {type: string, description: {ru: "Сегмент / группа клиентов (например, Розничная сеть, Дистрибьютор)"}}
+      region:       {type: string, description: {ru: "Регион клиента (бизнес-регион)"}}
+      macro_region: {type: string, description: {ru: "Макрорегион (группа регионов)"}}
+      manager:      {type: string, description: {ru: "Ответственный менеджер"}}
+      tax_id:       {type: string, sensitive: true, description: {ru: "БИН/ИИН. Персональные данные для ИП — по умолчанию не передаётся"}}
+      is_active:    {type: boolean, description: {ru: "Клиент не помечен на удаление"}}
+
+  suppliers:
+    label: {ru: "Поставщики", en: "Suppliers"}
+    description: {ru: "Поставщики сырья, товаров и услуг", en: "Suppliers"}
+    kind: catalog
+    load: replace_all
+    key: [id]
+    fields:
+      id:            {type: string, required: true, description: {ru: "Идентификатор поставщика"}}
+      code:          {type: string, description: {ru: "Код в учётной системе"}}
+      name:          {type: string, required: true, description: {ru: "Наименование поставщика"}}
+      region:        {type: string, description: {ru: "Регион поставщика"}}
+      supplier_type: {type: string, description: {ru: "Группа поставщиков (что поставляет)"}}
+      tax_id:        {type: string, sensitive: true, description: {ru: "БИН/ИИН — по умолчанию не передаётся"}}
+      is_active:     {type: boolean, description: {ru: "Поставщик не помечен на удаление"}}
+
+  warehouses:
+    label: {ru: "Склады", en: "Warehouses"}
+    description: {ru: "Склады и места хранения", en: "Warehouses"}
+    kind: catalog
+    load: replace_all
+    key: [id]
+    fields:
+      id:             {type: string, required: true, description: {ru: "Идентификатор склада"}}
+      code:           {type: string, description: {ru: "Код в учётной системе"}}
+      name:           {type: string, required: true, description: {ru: "Наименование склада"}}
+      region:         {type: string, description: {ru: "Регион склада"}}
+      warehouse_type: {type: string, description: {ru: "Тип склада (группа складов)"}}
+
+  employees:
+    label: {ru: "Сотрудники", en: "Employees"}
+    description: {ru: "Сотрудники (необязательная сущность). Оклады и персональные данные в контракт не входят.", en: "Employees (optional). Salaries and personal data are not part of the contract."}
+    kind: catalog
+    optional: true
+    load: replace_all
+    key: [id]
+    fields:
+      id:            {type: string, required: true, description: {ru: "Идентификатор сотрудника"}}
+      name:          {type: string, required: true, description: {ru: "ФИО"}}
+      department:    {type: string, description: {ru: "Подразделение"}}
+      position:      {type: string, description: {ru: "Должность"}}
+      hired_at:      {type: date, description: {ru: "Дата приёма"}}
+      terminated_at: {type: date, description: {ru: "Дата увольнения; пусто — работает"}}
+
+  # ------------------------------------------------------------------ документы (строки)
+  sales:
+    label: {ru: "Продажи", en: "Sales"}
+    description: {ru: "Строки проведённых документов продажи и возврата от клиента. Одна строка = товар в документе.", en: "Lines of posted sales and customer return documents"}
+    kind: document
+    load: replace_window
+    window_field: date
+    key: [id]
+    fields:
+      id:               {type: string, required: true, description: {ru: "Идентификатор строки (документ + номер строки)"}}
+      document_id:      {type: string, required: true, description: {ru: "Идентификатор документа"}}
+      document_number:  {type: string, description: {ru: "Номер документа"}}
+      date:             {type: date, required: true, description: {ru: "Дата документа"}}
+      operation:        {type: string, required: true, enum: [sale, return], description: {ru: "sale — продажа (реализация), return — возврат от клиента"}}
+      customer_id:      {type: string, ref: customers, description: {ru: "Клиент"}}
+      warehouse_id:     {type: string, ref: warehouses, description: {ru: "Склад"}}
+      product_id:       {type: string, required: true, ref: products, description: {ru: "Товар"}}
+      manager:          {type: string, description: {ru: "Менеджер, оформивший документ"}}
+      quantity:         {type: decimal, required: true, description: {ru: "Количество (положительное и для возвратов)"}}
+      amount:           {type: decimal, required: true, description: {ru: "Сумма без НДС после скидок (для возврата — сумма возврата)"}}
+      vat_amount:       {type: decimal, description: {ru: "НДС"}}
+      cost_amount:      {type: decimal, description: {ru: "Себестоимость строки (для продаж)"}}
+      due_date:         {type: date, description: {ru: "Срок оплаты по документу"}}
+      base_document_id: {type: string, description: {ru: "Для возврата — документ продажи"}}
+
+  purchases:
+    label: {ru: "Закупки", en: "Purchases"}
+    description: {ru: "Строки проведённых документов поступления от поставщиков", en: "Lines of posted purchase documents"}
+    kind: document
+    load: replace_window
+    window_field: date
+    key: [id]
+    fields:
+      id:              {type: string, required: true, description: {ru: "Идентификатор строки"}}
+      document_id:     {type: string, required: true, description: {ru: "Идентификатор документа"}}
+      document_number: {type: string, description: {ru: "Номер документа"}}
+      date:            {type: date, required: true, description: {ru: "Дата документа"}}
+      supplier_id:     {type: string, ref: suppliers, description: {ru: "Поставщик"}}
+      warehouse_id:    {type: string, ref: warehouses, description: {ru: "Склад поступления"}}
+      product_id:      {type: string, required: true, ref: products, description: {ru: "Номенклатура (товар или материал)"}}
+      quantity:        {type: decimal, required: true, description: {ru: "Количество в единицах номенклатуры"}}
+      amount:          {type: decimal, required: true, description: {ru: "Сумма без НДС"}}
+      vat_amount:      {type: decimal, description: {ru: "НДС"}}
+
+  production:
+    label: {ru: "Производство", en: "Production"}
+    description: {ru: "Строки документов выпуска продукции", en: "Lines of production output documents"}
+    kind: document
+    optional: true
+    load: replace_window
+    window_field: date
+    key: [id]
+    fields:
+      id:               {type: string, required: true, description: {ru: "Идентификатор строки"}}
+      document_id:      {type: string, required: true, description: {ru: "Идентификатор документа выпуска"}}
+      document_number:  {type: string, description: {ru: "Номер документа"}}
+      date:             {type: date, required: true, description: {ru: "Дата выпуска"}}
+      work_center:      {type: string, description: {ru: "Производственное подразделение / линия"}}
+      warehouse_id:     {type: string, ref: warehouses, description: {ru: "Склад приёмки продукции"}}
+      product_id:       {type: string, required: true, ref: products, description: {ru: "Выпущенная продукция"}}
+      quantity:         {type: decimal, required: true, description: {ru: "Выпущено, включая брак"}}
+      planned_quantity: {type: decimal, description: {ru: "План выпуска (если ведётся в учётной системе)"}}
+      defect_quantity:  {type: decimal, description: {ru: "Брак (если ведётся)"}}
+      shift:            {type: string, description: {ru: "Смена (если ведётся)"}}
+
+  payments:
+    label: {ru: "Платежи", en: "Payments"}
+    description: {ru: "Поступления и списания денежных средств, по строкам расшифровки платежа", en: "Incoming and outgoing payments"}
+    kind: document
+    load: replace_window
+    window_field: date
+    key: [id]
+    fields:
+      id:                     {type: string, required: true, description: {ru: "Идентификатор строки расшифровки"}}
+      document_id:            {type: string, required: true, description: {ru: "Идентификатор платёжного документа"}}
+      document_number:        {type: string, description: {ru: "Номер документа"}}
+      date:                   {type: date, required: true, description: {ru: "Дата платежа"}}
+      direction:              {type: string, required: true, enum: [incoming, outgoing], description: {ru: "incoming — поступление, outgoing — списание"}}
+      counterparty_type:      {type: string, enum: [customer, supplier, other], description: {ru: "Кто платит или получает"}}
+      counterparty_id:        {type: string, description: {ru: "Клиент или поставщик"}}
+      settlement_document_id: {type: string, description: {ru: "Документ, который оплачен (продажа или закупка)"}}
+      amount:                 {type: decimal, required: true, description: {ru: "Сумма платежа (с НДС, как в банке)"}}
+
+  costs:
+    label: {ru: "Расходы", en: "Costs"}
+    description: {ru: "Прочие (операционные) расходы по статьям, не входящие в себестоимость продаж", en: "Operating costs by cost item"}
+    kind: document
+    load: replace_window
+    window_field: date
+    key: [id]
+    fields:
+      id:          {type: string, required: true, description: {ru: "Идентификатор строки расхода"}}
+      document_id: {type: string, description: {ru: "Идентификатор документа"}}
+      date:        {type: date, required: true, description: {ru: "Дата расхода"}}
+      cost_item:   {type: string, required: true, description: {ru: "Статья расходов"}}
+      department:  {type: string, description: {ru: "Подразделение"}}
+      amount:      {type: decimal, required: true, description: {ru: "Сумма без НДС"}}
+      description: {type: string, description: {ru: "Комментарий"}}
+
+  write_offs:
+    label: {ru: "Списания", en: "Write-offs"}
+    description: {ru: "Строки документов списания товаров (порча, истечение срока, недостача)", en: "Stock write-off lines"}
+    kind: document
+    load: replace_window
+    window_field: date
+    key: [id]
+    fields:
+      id:           {type: string, required: true, description: {ru: "Идентификатор строки"}}
+      document_id:  {type: string, required: true, description: {ru: "Идентификатор документа"}}
+      date:         {type: date, required: true, description: {ru: "Дата списания"}}
+      warehouse_id: {type: string, ref: warehouses, description: {ru: "Склад"}}
+      product_id:   {type: string, required: true, ref: products, description: {ru: "Товар"}}
+      quantity:     {type: decimal, required: true, description: {ru: "Количество"}}
+      reason:       {type: string, description: {ru: "Причина списания"}}
+      cost_amount:  {type: decimal, description: {ru: "Себестоимость списанного"}}
+
+  # ------------------------------------------------------------------ срезы (остатки на дату)
+  inventory:
+    label: {ru: "Остатки", en: "Inventory"}
+    description: {ru: "Остатки на складах на конец дня snapshot_date. Текущие остатки — последняя дата среза.", en: "End-of-day stock snapshots"}
+    kind: snapshot
+    load: replace_window
+    window_field: snapshot_date
+    key: [snapshot_date, warehouse_id, product_id]
+    fields:
+      snapshot_date: {type: date, required: true, description: {ru: "Дата среза (конец дня)"}}
+      warehouse_id:  {type: string, required: true, ref: warehouses, description: {ru: "Склад"}}
+      product_id:    {type: string, required: true, ref: products, description: {ru: "Товар"}}
+      quantity:      {type: decimal, required: true, description: {ru: "Остаток"}}
+      reorder_point: {type: decimal, description: {ru: "Минимальный запас (точка заказа), если настроен"}}
+
+  receivables:
+    label: {ru: "Задолженность клиентов", en: "Receivables"}
+    description: {ru: "Открытая задолженность клиентов по документам на конец дня snapshot_date (с НДС)", en: "Open customer receivables by document at snapshot date (incl. VAT)"}
+    kind: snapshot
+    load: replace_window
+    window_field: snapshot_date
+    key: [snapshot_date, document_id]
+    fields:
+      snapshot_date: {type: date, required: true, description: {ru: "Дата среза (конец дня)"}}
+      customer_id:   {type: string, required: true, ref: customers, description: {ru: "Клиент"}}
+      document_id:   {type: string, required: true, description: {ru: "Документ продажи, по которому есть долг"}}
+      document_date: {type: date, description: {ru: "Дата документа продажи"}}
+      due_date:      {type: date, description: {ru: "Плановая дата погашения"}}
+      amount_due:    {type: decimal, required: true, description: {ru: "Сумма долга с НДС"}}

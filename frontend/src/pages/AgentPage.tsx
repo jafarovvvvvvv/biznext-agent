@@ -3,11 +3,12 @@ import { Check, MessageSquarePlus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { ApiError, apiDelete } from "../api/client";
-import { queryKeys, useConversation, useConversations, useMeta, useSuggestedQuestions } from "../api/hooks";
+import { queryKeys, useActiveSource, useConversation, useConversations, useMeta, useSuggestedQuestions } from "../api/hooks";
 import { askStream } from "../api/stream";
 import type { AgentResponse, TraceStep } from "../api/types";
 import { AnswerCard } from "../components/answer/AnswerCard";
 import { AskBox } from "../components/AskBox";
+import { SourceIcon, SourceTag } from "../components/SourcePicker";
 import { ErrorState, Skeleton } from "../components/ui";
 import { cx } from "../lib/ui-utils";
 import { dayGroup, type DayGroup } from "../lib/format";
@@ -98,6 +99,7 @@ function History({ activeId, onNew }: { activeId?: string; onNew: () => void }) 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const conversations = useConversations();
+  const { sources } = useActiveSource();
   const list = conversations.data?.conversations;
   const groups = useMemo(() => {
     const result: Record<DayGroup, NonNullable<typeof list>> = { today: [], yesterday: [], earlier: [] };
@@ -125,8 +127,9 @@ function History({ activeId, onNew }: { activeId?: string; onNew: () => void }) 
               <div className="eyebrow px-3 pb-1">{t(labels[group])}</div>
               {groups[group].map((c) => (
                 <div key={c.id} className={cx("group flex items-center rounded-lg", c.id === activeId ? "bg-surface ring-1 ring-line" : "hover:bg-sunken")}>
-                  <button type="button" onClick={() => navigate(`/agent/${c.id}`)} className="min-w-0 flex-1 truncate px-3 py-2 text-left text-[13px] text-ink-soft" title={c.title}>
-                    {c.title}
+                  <button type="button" onClick={() => navigate(`/agent/${c.id}`)} className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2 text-left text-[13px] text-ink-soft" title={c.title}>
+                    <span className="truncate">{c.title}</span>
+                    {sources.length > 1 && <SourceTag source={sources.find((s) => s.id === (c.source_id ?? sources.find((x) => x.is_default)?.id))} />}
                   </button>
                   <button
                     type="button"
@@ -158,6 +161,7 @@ export function AgentPage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const meta = useMeta();
+  const active = useActiveSource();
   const suggested = useSuggestedQuestions();
   // conversation created by a question asked on this screen: its turns are already in local state
   const [createdHere, setCreatedHere] = useState<string | null>(null);
@@ -205,7 +209,7 @@ export function AgentPage() {
       abortRef.current = controller;
       try {
         await askStream(
-          { question, conversation_id: conversationId ?? null, lang },
+          { question, conversation_id: conversationId ?? null, lang, source_id: active.sourceId || null },
           {
             onStart: (event) => {
               if (!conversationId) {
@@ -242,7 +246,7 @@ export function AgentPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversationId, lang, running],
+    [conversationId, lang, running, active.sourceId],
   );
 
   // question passed from the dashboard ("Ask your data")
@@ -263,6 +267,8 @@ export function AgentPage() {
   };
 
   const empty = allTurns.length === 0 && !conversation.isLoading;
+  const viewSourceId = conversation.data?.source_id ?? allTurns.find((turn) => turn.response?.source_id)?.response?.source_id ?? null;
+  const viewSource = active.sources.find((s) => s.id === (viewSourceId ?? active.sources.find((x) => x.is_default)?.id));
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
@@ -276,6 +282,12 @@ export function AgentPage() {
                 {t("agent.heroTitle")}
               </h1>
               <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-muted">{t("agent.heroText")}</p>
+              {active.source && active.sources.length > 1 && (
+                <div className="mt-4 inline-flex w-fit items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 text-xs text-ink-soft">
+                  <SourceIcon type={active.source.type} className={active.source.type === "1c" ? "text-warning" : "text-accent"} />
+                  {t("agent.sourceLabel")}: <span className="font-medium text-ink">{active.source.name}</span>
+                </div>
+              )}
               {meta.data && !meta.data.llm.configured && (
                 <div className="mt-4 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">{t("agent.llmNotConfigured")}</div>
               )}
@@ -302,6 +314,13 @@ export function AgentPage() {
             </div>
           ) : (
             <div className="mx-auto max-w-4xl space-y-10 px-4 pt-8 pb-40 md:px-8">
+              {viewSource && active.sources.length > 1 && (
+                <div className="!mb-4 flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <SourceIcon type={viewSource.type} className={viewSource.type === "1c" ? "text-warning" : "text-accent"} />
+                  {t("agent.sourceLabel")}: <span className="font-medium text-ink-soft">{viewSource.name}</span>
+                  {viewSource.id !== active.sourceId && <span className="text-faint">· {t("agent.sourceLocked")}</span>}
+                </div>
+              )}
               {conversation.isLoading && <Skeleton className="h-40" />}
               {conversation.error && <ErrorState error={conversation.error} onRetry={() => void conversation.refetch()} />}
               {allTurns.map((turn) => (

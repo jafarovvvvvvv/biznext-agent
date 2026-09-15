@@ -4,7 +4,8 @@
 > параллельно и обязаны соблюдать имена, форматы и API, описанные здесь. Изменение контракта —
 > только правкой этого файла.
 >
-> Исходные требования: `Промпт для сборки BizNext Agent Demo.md` (разделы 1–47).
+> Исходные требования: `Промпт для сборки BizNext Agent Demo.md` (разделы 1–47, 56).
+> Коннекторы и 1С (§56) — отдельный документ [CONNECTORS.md](CONNECTORS.md), сводка — §11.
 
 ---
 
@@ -43,12 +44,19 @@ biznext.kz/
 │       ├── requirements.txt
 │       └── generate.py (+ модули)
 ├── semantic/                   # владелец: DB-поток (данные), читает backend
-│   ├── business_context.yaml
-│   ├── data_dictionary.yaml
-│   ├── metrics.yaml
-│   ├── dashboard.yaml
-│   ├── insights.yaml
-│   └── suggested_questions.yaml
+│   ├── sources.yaml            # реестр источников данных (§11)
+│   ├── demo_postgres/          # слой прямого источника: 6 файлов ниже
+│   │   ├── business_context.yaml
+│   │   ├── data_dictionary.yaml
+│   │   ├── metrics.yaml
+│   │   ├── dashboard.yaml
+│   │   ├── insights.yaml
+│   │   └── suggested_questions.yaml
+│   ├── packs/standard/         # стандартные метрики поверх канонического контракта
+│   └── onec_demo/              # business_context источника 1С (остальное из packs/standard)
+├── contracts/canonical/v1.yaml # канонический контракт данных (§11)
+├── connector/                  # BizNext Connector: адаптер 1С, маппинг, синхронизация
+├── onec_demo/                  # эмулятор публикации OData 1С (демо-режим)
 ├── backend/                    # владелец: backend-поток
 └── frontend/                   # владелец: frontend-поток
 ```
@@ -162,9 +170,21 @@ Seed после загрузки данных повторно выдаёт `GRA
 DROP/CREATE/ALTER/GRANT завершаются ошибкой PostgreSQL даже при прямом подключении в обход валидатора;
 чтение `app.*` запрещено.
 
+§56 добавляет (идемпотентный сервис `migrate`, `database/seed/migrate.py`):
+
+| Роль / схема | Права |
+|---|---|
+| `INGEST_DB_USER` (`biznext_ingest`) | SELECT/INSERT/UPDATE/DELETE/MAINTAIN только в канонических схемах источников и в `ingest`; к `demo`, `app` доступа нет; не может создавать таблицы |
+| схема `onec_demo` | таблицы генерируются из контракта; `agent_readonly` — только SELECT; `biznext_app` — ничего |
+| схема `ingest` | `loads`, `staging` (unlogged), `runs`, `connectors`; агенту и приложению недоступна |
+
 ---
 
 ## 6. Семантический слой (`semantic/*.yaml`)
+
+Слой загружается для каждого источника из `semantic/sources.yaml`: список каталогов ищется по
+порядку для каждого файла (источник переопределяет часть пакета), `${schema}` в YAML заменяется
+схемой источника. В формулах доступна переменная `period_days` (дней в периоде или бакете).
 
 Все человекочитаемые строки — объект `{ru: ..., en: ...}` (en можно опустить — тогда берётся ru).
 Backend загружает файлы при старте, валидирует pydantic-моделями и падает с понятной ошибкой при
@@ -524,7 +544,8 @@ System prompt (`prompts.py`) обязан содержать правила §30
 
 ## 8. HTTP API (контракт frontend ↔ backend)
 
-Базовый путь `/api`. JSON, даты ISO-8601, деньги — числа (float) в KZT, проценты — числа в
+Базовый путь `/api`. Параметр `source=<id>` (§11) выбирает источник данных для `meta`,
+`dashboard`, `insights`, `suggested-questions`; без него — источник по умолчанию. JSON, даты ISO-8601, деньги — числа (float) в KZT, проценты — числа в
 процентных пунктах (`-8.4` = −8,4%). Ошибки: HTTP 4xx/5xx с телом
 `{"error": {"code": "...", "message": "..."}}`; коды: `invalid_request`, `not_found`,
 `llm_not_configured`, `llm_unavailable`, `database_unavailable`, `unauthorized`, `internal_error`.
@@ -538,13 +559,16 @@ System prompt (`prompts.py`) обязан содержать правила §30
  "timezone": "Asia/Almaty", "today": "2026-09-14",
  "data_range": {"start": "2025-08-01", "end": "2026-09-14"},
  "llm": {"provider": "anthropic", "model": "claude-opus-5", "configured": true},
- "features": {"admin_token_required": false}}
+ "features": {"admin_token_required": false},
+ "source": SourceInfo, "sources": [SourceInfo], "default_source": "demo_postgres"}
 ```
+`SourceInfo`: `{"id", "name", "type": "postgresql|1c", "storage": "direct|canonical", "mode": "live|demo", "is_default", "available"}`
 
 ### 8.2 Агент
-- `POST /api/agent/ask` body `{"question": "...", "conversation_id": "uuid|null", "lang": "ru|en"}` → `AgentResponse`
+- `POST /api/agent/ask` body `{"question": "...", "conversation_id": "uuid|null", "lang": "ru|en", "source_id": "id|null"}` → `AgentResponse`.
+  Новый диалог создаётся в `source_id`; продолжение диалога всегда идёт в его источнике.
 - `POST /api/agent/ask/stream` тот же body → `text/event-stream`:
-  - `event: start` → `{"trace_id", "conversation_id", "message_id"}`
+  - `event: start` → `{"trace_id", "conversation_id", "message_id", "source_id"}`
   - `event: step` → `TraceStep` (ниже), по мере реального выполнения
   - `event: final` → `AgentResponse`
   - `event: error` → `{"code", "message", "trace_id"}`
@@ -552,7 +576,7 @@ System prompt (`prompts.py`) обязан содержать правила §30
 `AgentResponse`:
 ```json
 {
-  "message_id": "uuid", "conversation_id": "uuid", "trace_id": "uuid",
+  "message_id": "uuid", "conversation_id": "uuid", "trace_id": "uuid", "source_id": "demo_postgres",
   "question": "...",
   "status": "answered|insufficient_data|clarification_needed|limit_reached|error",
   "summary": "...", "answer": "markdown",
@@ -583,7 +607,7 @@ System prompt (`prompts.py`) обязан содержать правила §30
 ```
 
 ### 8.3 История и отчёты
-- `GET /api/conversations` → `{"conversations": [{"id", "title", "created_at", "updated_at", "message_count", "last_summary"}]}` (новые сверху)
+- `GET /api/conversations` → `{"conversations": [{"id", "title", "source_id", "created_at", "updated_at", "message_count", "last_summary"}]}` (новые сверху)
 - `GET /api/conversations/{id}` → `{"id", "title", "created_at", "messages": [{"id", "role": "user|assistant", "content", "response": AgentResponse|null, "created_at"}]}`
 - `DELETE /api/conversations/{id}` → `204`
 - `GET /api/reports?limit=50` → `{"reports": [{"message_id", "conversation_id", "question", "summary", "status", "has_chart", "has_table", "created_at"}]}`
@@ -689,3 +713,33 @@ API-ключи, пароли, строки подключения и сырые 
 | 6 | Integration | `docker compose up -d --build` на сервере; UI ↔ API ↔ БД end-to-end |
 | 7 | Demo scenarios | ≥10 сценариев §34 + главная демонстрация §36 вручную |
 | 8 | Polish | UX, ошибки, README, финальная проверка §40 |
+
+---
+
+## 11. Источники данных и коннекторы (§56)
+
+Полное описание — [CONNECTORS.md](CONNECTORS.md). Контракт в двух словах:
+
+- **Реестр** `semantic/sources.yaml`: `id`, `type`, `storage: direct|canonical`, `mode`, `schema`,
+  `semantic: [каталоги]`, `entities`. Backend строит для каждого источника свой коннектор (та же роль
+  `agent_readonly`, своя схема), валидатор с этой схемой и полный набор сервисов (метрики, дашборд,
+  инсайты, агент). Агент и инструменты общие.
+- **Канонический контракт** `contracts/canonical/v1.yaml`: products, customers, suppliers, warehouses,
+  employees, sales, purchases, production, payments, costs, write_offs, inventory, receivables.
+- **Ingest API** `/api/ingest/v1` (Bearer-токен источника из `INGEST_TOKENS=source_id:token`):
+  `GET /state`, `GET /contract`, `POST /runs`, `POST /runs/{id}/finish`, `POST /loads`,
+  `POST /loads/{id}/chunks` (gzip, идемпотентно по `seq`), `POST /loads/{id}/commit`.
+  Каждая запись проверяется по контракту (типы, обязательность, перечисления, неизвестные поля,
+  попадание в окно); commit атомарно заменяет справочник или окно дат.
+- **`GET /api/data-sources`** для канонического источника добавляет `sync`:
+  `{"contract_version", "ingest_enabled", "connector": {"last_seen_at", "system", "configuration",
+  "adapter", "endpoint", "version", "read_only"}, "runs": [...], "entities": [{"entity", "label",
+  "kind", "rows", "last_loaded_at", "window", "source_objects", "fields", "excluded_fields"}]}`;
+  статус источника `connected | waiting_for_sync | error`.
+- **Хранилище приложения**: `app.conversations.source_id`, `app.agent_traces.source_id`
+  (добавляются идемпотентно; старые диалоги относятся к источнику по умолчанию).
+- **Frontend**: переключатель источника в шапке (localStorage `biznext.source`, `?source=`), метка
+  источника в истории и в диалоге, страница источников со схемой потока, синхронизацией, сущностями
+  и мерами безопасности.
+- **Проверки**: сверка стандартных метрик 1С с прямым источником (интеграционный тест), права
+  `biznext_ingest`, изоляция сети 1С от backend, сквозной тест коннектора с эмулятором.

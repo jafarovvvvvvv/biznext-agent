@@ -9,16 +9,15 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.agent.date_context import DateContext
-from app.api.deps import get_container, lang_param
+from app.api.deps import get_container, lang_param, source_param
 from app.config import APP_NAME, APP_VERSION
 from app.connectors.base import DatabaseUnavailableError, SqlExecutionError
-from app.container import Container
+from app.container import Container, DataSource
 from app.services.ask import ApiError
 
 router = APIRouter()
 
 FUTURE_CONNECTORS = [
-    ("1c", "1c", "1С:Предприятие"),
     ("excel", "excel", "Excel"),
     ("google_sheets", "google_sheets", "Google Sheets"),
     ("rest_api", "rest_api", "REST API"),
@@ -38,8 +37,10 @@ async def health(container: Container = Depends(get_container)) -> dict[str, Any
 
 
 @router.get("/meta")
-async def meta(container: Container = Depends(get_container), lang: str = Depends(lang_param)) -> dict[str, Any]:
-    services = container.require()
+async def meta(container: Container = Depends(get_container), lang: str = Depends(lang_param),
+               source: str | None = Depends(source_param)) -> dict[str, Any]:
+    selected = container.source(source)
+    services = container.require(source)
     ctx = services.semantic.business_context
     try:
         data_range = await services.metrics.data_range()
@@ -57,13 +58,16 @@ async def meta(container: Container = Depends(get_container), lang: str = Depend
         "llm": {"provider": container.provider.name, "model": container.provider.model,
                 "configured": container.provider.configured},
         "features": {"admin_token_required": bool(container.settings.admin_token_value)},
+        "source": selected.public(lang, container.default_source_id),
+        "sources": [s.public(lang, container.default_source_id) for s in container.sources.values()],
+        "default_source": container.default_source_id,
     }
 
 
 @router.get("/suggested-questions")
-async def suggested_questions(container: Container = Depends(get_container),
-                              lang: str = Depends(lang_param)) -> dict[str, Any]:
-    services = container.require()
+async def suggested_questions(container: Container = Depends(get_container), lang: str = Depends(lang_param),
+                              source: str | None = Depends(source_param)) -> dict[str, Any]:
+    services = container.require(source)
     values = DateContext(container.today()).placeholders(lang)
     questions = []
     for item in services.semantic.suggested_questions.questions:
@@ -72,28 +76,43 @@ async def suggested_questions(container: Container = Depends(get_container),
     return {"questions": questions}
 
 
-@router.get("/data-sources")
-async def data_sources(container: Container = Depends(get_container), lang: str = Depends(lang_param)) -> dict[str, Any]:
-    connector = container.connector
+async def _describe_source(container: Container, source: DataSource, lang: str) -> dict[str, Any]:
+    connector = source.connector
     status = await connector.test_connection()
     details: dict[str, Any] = {**connector.public_details(), "checked_at": status.checked_at.isoformat(timespec="seconds")}
+    empty = False
     if status.ok:
         try:
             schema = await connector.introspect()
             details["tables"] = len(schema.tables)
             details["total_rows"] = sum(t.row_count or 0 for t in schema.tables)
-            if container.services is not None:
-                data_range = await container.services.metrics.data_range()
+            if source.services is not None:
+                data_range = await source.services.metrics.data_range()
                 if data_range:
                     details["data_start"], details["data_end"] = data_range[0].isoformat(), data_range[1].isoformat()
+                else:
+                    empty = True
         except (DatabaseUnavailableError, SqlExecutionError):
             status.ok = False
-    description = ("Demo company database (synthetic data)" if lang == "en"
-                   else "Демо-база предприятия (synthetic data)")
-    sources: list[dict[str, Any]] = [{
-        "id": connector.id, "type": connector.type, "name": connector.name,
-        "status": "connected" if status.ok else "error", "description": description, "details": details,
-    }]
+    config = source.config
+    item: dict[str, Any] = {
+        "id": source.id, "type": config.type, "name": source.name(lang), "storage": config.storage, "mode": config.mode,
+        "is_default": source.id == container.default_source_id,
+        "status": "error" if not status.ok else ("waiting_for_sync" if empty and config.storage == "canonical" else "connected"),
+        "description": config.description.get(lang) if config.description else None, "details": details,
+    }
+    if config.storage == "canonical" and container.ingest is not None:
+        try:
+            item["sync"] = await container.ingest.status(source.id)
+            item["sync"]["ingest_enabled"] = container.ingest.enabled
+        except DatabaseUnavailableError:
+            item["sync"] = None
+    return item
+
+
+@router.get("/data-sources")
+async def data_sources(container: Container = Depends(get_container), lang: str = Depends(lang_param)) -> dict[str, Any]:
+    sources = [await _describe_source(container, source, lang) for source in container.sources.values()]
     sources += [{"id": sid, "type": stype, "name": name, "status": "coming_soon"} for sid, stype, name in FUTURE_CONNECTORS]
     return {"sources": sources}
 
@@ -101,18 +120,19 @@ async def data_sources(container: Container = Depends(get_container), lang: str 
 @router.get("/data-sources/{source_id}/tables")
 async def data_source_tables(source_id: str, container: Container = Depends(get_container),
                              lang: str = Depends(lang_param)) -> dict[str, Any]:
-    if source_id != container.connector.id:
-        raise ApiError(404, "not_found", "data source not found")
+    source = container.source(source_id)
     try:
-        schema = await container.connector.introspect()
+        schema = await source.connector.introspect()
     except DatabaseUnavailableError as exc:
         raise ApiError(503, "database_unavailable", "database is unavailable") from exc
-    dictionary = container.services.semantic.data_dictionary.tables if container.services else {}
+    dictionary = source.services.semantic.data_dictionary.tables if source.services else {}
     tables = []
     for table in schema.tables:
         doc = dictionary.get(table.name)
         columns = []
         for column in table.columns:
+            if column.name.startswith("_"):
+                continue  # technical load columns (_run_id, _loaded_at)
             column_doc = doc.columns.get(column.name) if doc else None
             description = (column_doc.description.get(lang) if column_doc and column_doc.description else None) or column.description
             columns.append({"name": column.name, "type": column.type, "description": description})

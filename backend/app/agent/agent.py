@@ -19,6 +19,7 @@ from app.config import Settings
 from app.connectors.base import DataConnector, DatabaseUnavailableError
 from app.llm.base import LLMError, LLMMessage, LLMProvider, LLMUsage, ToolResult
 from app.semantic.loader import SemanticLayer
+from app.semantic.sources import SourceConfig
 from app.services.metrics import MetricService
 from app.sql.executor import SafeSqlExecutor
 from app.tools.base import AgentTool, ToolContext, error_content
@@ -67,8 +68,9 @@ _LIMIT_TEXT = {
 class DataAgent:
     def __init__(self, *, settings: Settings, semantic: SemanticLayer, connector: DataConnector,
                  executor: SafeSqlExecutor, metrics: MetricService, provider: LLMProvider,
-                 tools: dict[str, AgentTool] | None = None) -> None:
+                 tools: dict[str, AgentTool] | None = None, source: SourceConfig | None = None) -> None:
         self.settings = settings
+        self.source = source
         self.semantic = semantic
         self.connector = connector
         self.executor = executor
@@ -79,7 +81,7 @@ class DataAgent:
 
     def system_prompt(self, lang: str) -> str:
         if lang not in self._system_prompts:
-            self._system_prompts[lang] = build_system_prompt(self.semantic, lang)
+            self._system_prompts[lang] = build_system_prompt(self.semantic, lang, self.source)
         return self._system_prompts[lang]
 
     async def run(self, question: str, *, lang: str = "ru", today: date, history: list[HistoryTurn] | None = None,

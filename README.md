@@ -17,6 +17,13 @@ BizNext Agent — AI Data Agent для руководителя предприя
 закупки сырья, производственные линии, склады, продажи по регионам, возвраты, списания, расходы и
 план продаж за 13+ месяцев.
 
+Тот же бизнес доступен двумя источниками — переключатель в шапке:
+
+- **Demo Foods · PostgreSQL** — агент читает демо-базу напрямую;
+- **Demo Foods · 1С (демо-режим)** — данные идут из «1С» (эмулятор публикации OData) через
+  **BizNext Connector** в канонические таблицы, стандартные метрики считаются по ним. Подробно —
+  [docs/CONNECTORS.md](docs/CONNECTORS.md) (§56).
+
 ## Architecture
 
 ```text
@@ -29,14 +36,21 @@ FastAPI backend
    │      ↓
    │    Tools: get_database_schema · get_table_metadata · calculate_metric · run_readonly_sql · submit_answer
    │      ↓
-   ├── Semantic layer (semantic/*.yaml): словарь данных, бизнес-метрики, дашборд, правила инсайтов
-   ├── Safe SQL layer: sqlglot-валидатор → LIMIT → read-only транзакция → timeout
+   ├── Data sources (semantic/sources.yaml): demo_postgres (прямо) · onec_demo (канонические данные 1С)
+   ├── Semantic layer: semantic/demo_postgres/*.yaml · semantic/packs/standard/*.yaml (стандартные метрики)
+   ├── Safe SQL layer: sqlglot-валидатор (схема источника) → LIMIT → read-only транзакция → timeout
    │      ↓
-   └── DataConnector (PostgreSQL)  ──  роль agent_readonly (только SELECT)
+   ├── DataConnector (PostgreSQL)  ──  роль agent_readonly (только SELECT)
+   └── Ingest API /api/ingest/v1  ──  роль biznext_ingest, токен на источник
    ↓
 PostgreSQL 17
-   ├── схема demo  — бизнес-данные (synthetic)
-   └── схема app   — история диалогов и Agent Trace
+   ├── схема demo      — бизнес-данные (synthetic)
+   ├── схема onec_demo — канонические сущности из 1С (contracts/canonical/v1.yaml)
+   ├── схема ingest    — загрузки и синхронизации коннекторов
+   └── схема app       — история диалогов и Agent Trace
+
+«Сеть предприятия» (Docker network enterprise, без выхода наружу и без маршрута от backend):
+1С (onec-demo, OData, read-only) → BizNext Connector (маппинг → контракт) → исходящий HTTP → ingest API
 ```
 
 Подробный контракт компонентов, схемы данных и API — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -54,15 +68,20 @@ nano .env                        # впишите LLM_API_KEY (и при жел�
 docker compose up -d --build
 ```
 
-Первый запуск: PostgreSQL инициализирует роли и схемы, одноразовый сервис `seed` генерирует
-демо-данные (1–3 минуты), затем стартуют backend и web.
+Первый запуск: PostgreSQL инициализирует роли и схемы, одноразовые `migrate` (роль и схемы
+коннекторов) и `seed` (демо-данные + выгрузка инфобазы 1С, 1–3 минуты), затем стартуют backend, web,
+эмулятор 1С и коннектор. Первая полная синхронизация 1С занимает около минуты.
+
+Обновление существующей установки: `python3 scripts/init_env.py --add-missing` добавит в `.env`
+новые переменные (пароль роли ingest, токен коннектора, пароль пользователя 1С), не трогая старые.
 
 Откройте `http://<server>:8095` (порт задаётся `WEB_PORT`).
 
 ## Running
 
 ```bash
-docker compose ps                         # статус: db, backend, web (seed — одноразовый, Exited 0)
+docker compose ps                         # статус: db, backend, web, onec-demo, connector (migrate, seed — Exited 0)
+docker compose logs -f connector          # синхронизация 1С: сущности, записи, время
 docker compose logs -f backend            # логи агента: вопрос, SQL, результат валидации, строки, время
 docker compose restart backend            # перезапуск после смены .env
 SEED_FORCE=1 docker compose run --rm seed # пересоздать демо-данные (конец периода = сегодня)
@@ -98,8 +117,15 @@ cd backend && python -m venv .venv && .venv/bin/pip install -r requirements-dev.
 .venv/bin/python -m pytest -m "not integration and not live_llm"
 ```
 
-Интеграционные тесты — внутри контейнера против живой БД (права `agent_readonly` в обход валидатора,
-все метрики из `semantic/metrics.yaml`, дашборд, хранилище):
+Коннектор и эмулятор 1С (сквозной тест: данные → инфобаза → OData → адаптер → синхронизация):
+
+```bash
+cd connector && python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt && .venv/bin/python -m pytest
+```
+
+Интеграционные тесты — внутри контейнера против живой БД (права `agent_readonly` и `biznext_ingest`
+в обход валидатора, все метрики обоих источников, **сверка метрик прямого источника и 1С**, сетевая
+изоляция 1С, атомарность загрузок, дашборд, хранилище):
 
 ```bash
 docker compose run --rm --no-deps -u root   -v "$PWD/backend/tests:/app/tests:ro" -v "$PWD/backend/requirements-dev.txt:/app/requirements-dev.txt:ro"   -v "$PWD/backend/pyproject.toml:/app/pyproject.toml:ro"   backend sh -c "pip install -q -r requirements-dev.txt && python -m pytest -m 'not live_llm'"
@@ -118,6 +144,8 @@ docker compose exec -T db psql -U agent_readonly -d biznext -f - < database/chec
 
 ```bash
 docker compose cp scripts/run_demo_scenarios.py backend:/tmp/ && docker compose exec backend python /tmp/run_demo_scenarios.py http://web /tmp/demo_report.json
+# вопросы директора к источнику 1С
+docker compose exec backend python /tmp/run_demo_scenarios.py http://web /tmp/onec_report.json all onec_demo
 ```
 
 ### Выбор LLM
@@ -151,6 +179,11 @@ docker compose cp scripts/run_demo_scenarios.py backend:/tmp/ && docker compose 
 12. Какая доля рынка у наших конкурентов в Казахстане? — агент честно сообщает, что таких данных нет
 13. Удали все отменённые заказы из базы — агент отказывает, база доступна только для чтения
 
+**1С через BizNext Connector** (источник «Demo Foods · 1С»): «Сколько продали сегодня?», «Какие товары
+дают 80% прибыли?», «Почему прибыль в этом месяце ниже прошлого?», «Какие остатки скоро закончатся?»,
+«Какие клиенты перестали покупать?», «Какая себестоимость выросла сильнее всего?», «Что сейчас требует
+моего внимания?». На вопрос о простоях линий агент отвечает, что в 1С таких данных нет.
+
 **Главная демонстрация** (один диалог): «Что происходит с бизнесом за последний месяц?» → «Почему снизилась прибыль?» →
 «Покажи товары, которые больше всего повлияли» → «А если сравнить с прошлым месяцем?».
 
@@ -169,6 +202,10 @@ docker compose cp scripts/run_demo_scenarios.py backend:/tmp/ && docker compose 
 - **FastAPI + psycopg 3** — async, типизация через pydantic, SSE для реальных шагов агента.
 - **Семантический слой в YAML** — метрики («прибыль», «маржа», «выполнение плана») описаны данными,
   а не кодом агента. Замена демо-базы на базу клиента = новые YAML + коннектор, агент не меняется.
+- **Канонический контракт + коннектор, а не «агент → 1С»** — учётная система переводится в
+  универсальные сущности один раз (маппинг), стандартные метрики и агент переиспользуются для 1С,
+  MySQL, MS SQL, Excel, Google Sheets и REST API. Проверено: агент без изменений работает с 1С,
+  метрики по 1С сходятся с прямым источником.
 - **Цифры считает SQL/Python** — изменения в процентах, доли и сравнения периодов вычисляются
   детерминированно; LLM получает компактный результат и формулирует вывод.
 - **Ручной tool-use loop** — полный контроль над лимитами итераций, ретраями, объёмом данных для
@@ -185,6 +222,10 @@ docker compose cp scripts/run_demo_scenarios.py backend:/tmp/ && docker compose 
 - **Разделение данных.** История и Agent Trace хранятся в схеме `app` под отдельным пользователем
   `biznext_app`; у агента к ней доступа нет. Владелец БД используется только при инициализации и
   генерации демо-данных.
+- **1С не открывается в интернет.** Коннектор внутри сети предприятия читает 1С пользователем
+  с правами только чтения (клиент коннектора умеет только GET), передаёт только поля маппинга
+  (оклады и БИН не запрашиваются) и сам отправляет их в BizNext по токену источника. Роль
+  `biznext_ingest` пишет только канонические схемы; у агента и backend нет сетевого доступа к 1С.
 - **API-ключи** задаются только через `.env` (не в git), не логируются и не попадают в trace.
 - **Контроль стоимости LLM.** Лимиты итераций, вызовов инструментов, SQL-ретраев, строк и символов,
   передаваемых модели, общий таймаут запроса.

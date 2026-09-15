@@ -1,0 +1,437 @@
+# Стандартные метрики BizNext поверх канонического контракта (contracts/canonical/v1.yaml).
+# Одинаковы для любого источника: 1С, MySQL, MS SQL, Excel, Google Sheets, REST API.
+# ${schema} — схема канонических данных источника. Правила сборки SQL — docs/ARCHITECTURE.md §6.3.
+version: 1
+
+sources:
+  sales_lines:
+    from: "${schema}.sales s"
+    date_column: "s.date"
+    filters: ["s.operation = 'sale'"]
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN ${schema}.products p ON p.id = s.product_id"]
+        column: "p.category"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN ${schema}.products p ON p.id = s.product_id"]
+        column: "p.name"
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN ${schema}.customers c ON c.id = s.customer_id"]
+        column: "c.name"
+      customer_segment:
+        label: {ru: "Сегмент клиента", en: "Customer segment"}
+        joins: ["JOIN ${schema}.customers c ON c.id = s.customer_id"]
+        column: "c.segment"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN ${schema}.customers c ON c.id = s.customer_id"]
+        column: "c.region"
+      macro_region:
+        label: {ru: "Макрорегион", en: "Macro region"}
+        joins: ["JOIN ${schema}.customers c ON c.id = s.customer_id"]
+        column: "c.macro_region"
+      manager:
+        label: {ru: "Менеджер", en: "Manager"}
+        joins: []
+        column: "s.manager"
+      warehouse:
+        label: {ru: "Склад", en: "Warehouse"}
+        joins: ["JOIN ${schema}.warehouses w ON w.id = s.warehouse_id"]
+        column: "w.name"
+
+  returns:
+    from: "${schema}.sales r"
+    date_column: "r.date"
+    filters: ["r.operation = 'return'"]
+    dimensions:
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN ${schema}.products p ON p.id = r.product_id"]
+        column: "p.category"
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN ${schema}.products p ON p.id = r.product_id"]
+        column: "p.name"
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN ${schema}.customers c ON c.id = r.customer_id"]
+        column: "c.name"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN ${schema}.customers c ON c.id = r.customer_id"]
+        column: "c.region"
+
+  purchases:
+    from: "${schema}.purchases pu JOIN ${schema}.products m ON m.id = pu.product_id"
+    date_column: "pu.date"
+    filters: []
+    dimensions:
+      supplier:
+        label: {ru: "Поставщик", en: "Supplier"}
+        joins: ["JOIN ${schema}.suppliers sp ON sp.id = pu.supplier_id"]
+        column: "sp.name"
+      item:
+        label: {ru: "Номенклатура", en: "Item"}
+        joins: []
+        column: "m.name"
+      item_category:
+        label: {ru: "Категория закупки", en: "Purchase category"}
+        joins: []
+        column: "m.category"
+
+  production:
+    from: "${schema}.production pr"
+    date_column: "pr.date"
+    filters: []
+    dimensions:
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN ${schema}.products p ON p.id = pr.product_id"]
+        column: "p.name"
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN ${schema}.products p ON p.id = pr.product_id"]
+        column: "p.category"
+      work_center:
+        label: {ru: "Линия / подразделение", en: "Work center"}
+        joins: []
+        column: "pr.work_center"
+
+  costs:
+    from: "${schema}.costs co"
+    date_column: "co.date"
+    filters: []
+    dimensions:
+      cost_item:
+        label: {ru: "Статья расходов", en: "Cost item"}
+        joins: []
+        column: "co.cost_item"
+      department:
+        label: {ru: "Подразделение", en: "Department"}
+        joins: []
+        column: "co.department"
+
+  write_offs:
+    from: "${schema}.write_offs wo"
+    date_column: "wo.date"
+    filters: []
+    dimensions:
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN ${schema}.products p ON p.id = wo.product_id"]
+        column: "p.name"
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN ${schema}.products p ON p.id = wo.product_id"]
+        column: "p.category"
+      warehouse:
+        label: {ru: "Склад", en: "Warehouse"}
+        joins: ["JOIN ${schema}.warehouses w ON w.id = wo.warehouse_id"]
+        column: "w.name"
+      write_off_reason:
+        label: {ru: "Причина списания", en: "Write-off reason"}
+        joins: []
+        column: "wo.reason"
+
+  inventory:
+    from: "${schema}.inventory inv"
+    date_column: "inv.snapshot_date"
+    filters: []
+    dimensions:
+      product:
+        label: {ru: "Товар", en: "Product"}
+        joins: ["JOIN ${schema}.products p ON p.id = inv.product_id"]
+        column: "p.name"
+      category:
+        label: {ru: "Категория", en: "Category"}
+        joins: ["JOIN ${schema}.products p ON p.id = inv.product_id"]
+        column: "p.category"
+      warehouse:
+        label: {ru: "Склад", en: "Warehouse"}
+        joins: ["JOIN ${schema}.warehouses w ON w.id = inv.warehouse_id"]
+        column: "w.name"
+
+  receivables:
+    from: "${schema}.receivables rc"
+    date_column: "rc.snapshot_date"
+    filters: []
+    dimensions:
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN ${schema}.customers c ON c.id = rc.customer_id"]
+        column: "c.name"
+      customer_segment:
+        label: {ru: "Сегмент клиента", en: "Customer segment"}
+        joins: ["JOIN ${schema}.customers c ON c.id = rc.customer_id"]
+        column: "c.segment"
+      region:
+        label: {ru: "Регион", en: "Region"}
+        joins: ["JOIN ${schema}.customers c ON c.id = rc.customer_id"]
+        column: "c.region"
+
+  incoming_payments:
+    from: "${schema}.payments pm"
+    date_column: "pm.date"
+    filters: ["pm.direction = 'incoming'"]
+    dimensions:
+      customer:
+        label: {ru: "Клиент", en: "Customer"}
+        joins: ["JOIN ${schema}.customers c ON c.id = pm.counterparty_id"]
+        column: "c.name"
+
+metrics:
+  revenue:
+    label: {ru: "Выручка", en: "Revenue"}
+    description: {ru: "Продажи без НДС после скидок по проведённым документам реализации; возвраты не вычитаются", en: "Sales excl. VAT after discounts from posted sales documents; returns not deducted"}
+    synonyms: ["выручка", "продажи", "оборот", "сколько продали", "revenue", "sales"]
+    unit: currency
+    better: higher
+    kind: simple
+    source: sales_lines
+    expression: "SUM(s.amount)"
+
+  sales_vat:
+    label: {ru: "НДС с продаж", en: "Sales VAT"}
+    description: {ru: "НДС по проведённым продажам", en: "VAT on posted sales"}
+    unit: currency
+    better: higher
+    kind: simple
+    source: sales_lines
+    expression: "SUM(COALESCE(s.vat_amount, 0))"
+
+  cogs:
+    label: {ru: "Себестоимость продаж", en: "Cost of goods sold"}
+    description: {ru: "Себестоимость проданных товаров из учётной системы", en: "Cost of goods sold from the accounting system"}
+    synonyms: ["себестоимость", "cogs"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: sales_lines
+    expression: "SUM(COALESCE(s.cost_amount, 0))"
+
+  gross_profit:
+    label: {ru: "Валовая прибыль", en: "Gross profit"}
+    description: {ru: "Выручка минус себестоимость продаж", en: "Revenue minus cost of goods sold"}
+    synonyms: ["валовая прибыль", "gross profit"]
+    unit: currency
+    better: higher
+    kind: simple
+    source: sales_lines
+    expression: "SUM(s.amount) - SUM(COALESCE(s.cost_amount, 0))"
+
+  gross_margin_pct:
+    label: {ru: "Валовая маржа", en: "Gross margin"}
+    description: {ru: "Валовая прибыль / выручка, %", en: "Gross profit / revenue, %"}
+    synonyms: ["маржа", "маржинальность", "gross margin"]
+    unit: percent
+    better: higher
+    kind: ratio
+    numerator: gross_profit
+    denominator: revenue
+
+  operating_expenses:
+    label: {ru: "Операционные расходы", en: "Operating expenses"}
+    description: {ru: "Прочие расходы по статьям, не входящие в себестоимость продаж", en: "Other costs by cost item, not in cost of goods sold"}
+    synonyms: ["расходы", "затраты", "opex"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: costs
+    expression: "SUM(co.amount)"
+
+  write_off_cost:
+    label: {ru: "Списания", en: "Write-offs"}
+    description: {ru: "Себестоимость списанных товаров", en: "Cost of written-off goods"}
+    synonyms: ["списания", "потери", "write-offs"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: write_offs
+    expression: "SUM(COALESCE(wo.cost_amount, 0))"
+
+  operating_profit:
+    label: {ru: "Операционная прибыль", en: "Operating profit"}
+    description: {ru: "Валовая прибыль − операционные расходы − списания. «Прибыль» по умолчанию", en: "Gross profit − operating expenses − write-offs. Default meaning of 'profit'"}
+    synonyms: ["прибыль", "операционная прибыль", "profit"]
+    unit: currency
+    better: higher
+    kind: formula
+    formula: "gross_profit - operating_expenses - write_off_cost"
+
+  operating_margin_pct:
+    label: {ru: "Операционная маржа", en: "Operating margin"}
+    description: {ru: "Операционная прибыль / выручка, %", en: "Operating profit / revenue, %"}
+    synonyms: ["рентабельность", "операционная маржа"]
+    unit: percent
+    better: higher
+    kind: ratio
+    numerator: operating_profit
+    denominator: revenue
+
+  orders_count:
+    label: {ru: "Документы продажи", en: "Sales documents"}
+    description: {ru: "Количество проведённых документов реализации (заказов)", en: "Number of posted sales documents"}
+    synonyms: ["заказы", "количество продаж", "orders"]
+    unit: number
+    better: higher
+    kind: simple
+    source: sales_lines
+    expression: "COUNT(DISTINCT s.document_id)"
+
+  average_order_value:
+    label: {ru: "Средний чек", en: "Average order value"}
+    description: {ru: "Выручка / количество документов продажи", en: "Revenue / number of sales documents"}
+    synonyms: ["средний чек", "средний заказ"]
+    unit: currency
+    better: higher
+    kind: formula
+    formula: "revenue / orders_count"
+
+  units_sold:
+    label: {ru: "Продано, ед.", en: "Units sold"}
+    description: {ru: "Количество проданных единиц номенклатуры", en: "Quantity sold"}
+    synonyms: ["объём продаж", "штук", "упаковок"]
+    unit: number
+    better: higher
+    kind: simple
+    source: sales_lines
+    expression: "SUM(s.quantity)"
+
+  active_customers:
+    label: {ru: "Активные клиенты", en: "Active customers"}
+    description: {ru: "Клиенты хотя бы с одной продажей в периоде", en: "Customers with at least one sale in the period"}
+    synonyms: ["активные клиенты", "покупатели"]
+    unit: number
+    better: higher
+    kind: simple
+    source: sales_lines
+    expression: "COUNT(DISTINCT s.customer_id)"
+
+  returns_amount:
+    label: {ru: "Возвраты", en: "Returns"}
+    description: {ru: "Сумма возвратов от клиентов без НДС по дате возврата", en: "Customer returns excl. VAT by return date"}
+    synonyms: ["возвраты", "returns"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: returns
+    expression: "SUM(r.amount)"
+
+  net_revenue:
+    label: {ru: "Выручка за вычетом возвратов", en: "Net revenue"}
+    description: {ru: "Выручка − возвраты", en: "Revenue − returns"}
+    synonyms: ["чистая выручка", "net revenue"]
+    unit: currency
+    better: higher
+    kind: formula
+    formula: "revenue - returns_amount"
+
+  return_rate_pct:
+    label: {ru: "Доля возвратов", en: "Return rate"}
+    description: {ru: "Возвраты / выручка, %", en: "Returns / revenue, %"}
+    unit: percent
+    better: lower
+    kind: ratio
+    numerator: returns_amount
+    denominator: revenue
+
+  production_volume:
+    label: {ru: "Объём производства", en: "Production volume"}
+    description: {ru: "Выпущено продукции по документам выпуска, включая брак", en: "Output from production documents incl. defects"}
+    synonyms: ["производство", "выпуск", "произвели"]
+    unit: number
+    better: higher
+    kind: simple
+    source: production
+    expression: "SUM(pr.quantity)"
+
+  defect_rate_pct:
+    label: {ru: "Доля брака", en: "Defect rate"}
+    description: {ru: "Брак / выпуск, % (если брак ведётся в учётной системе)", en: "Defects / output, % (if tracked)"}
+    synonyms: ["брак", "доля брака"]
+    unit: percent
+    better: lower
+    kind: simple
+    source: production
+    expression: "SUM(pr.defect_quantity) * 100.0 / NULLIF(SUM(pr.quantity), 0)"
+
+  purchase_amount:
+    label: {ru: "Закупки", en: "Purchases"}
+    description: {ru: "Сумма проведённых поступлений от поставщиков без НДС", en: "Posted supplier receipts excl. VAT"}
+    synonyms: ["закупки", "purchases"]
+    unit: currency
+    better: lower
+    kind: simple
+    source: purchases
+    expression: "SUM(pu.amount)"
+
+  inventory_units:
+    label: {ru: "Остатки, ед.", en: "Stock, units"}
+    description: {ru: "Остаток на последнюю дату среза в периоде", en: "Stock at the latest snapshot in the period"}
+    synonyms: ["остатки", "запасы", "склад"]
+    unit: number
+    better: higher
+    kind: snapshot
+    source: inventory
+    expression: "SUM(inv.quantity)"
+
+  inventory_below_reorder:
+    label: {ru: "Позиции ниже минимального запаса", en: "Items below minimum stock"}
+    description: {ru: "Пары склад × товар с остатком ниже норматива на последнюю дату среза", en: "Warehouse × product pairs below minimum stock at the latest snapshot"}
+    synonyms: ["дефицит", "ниже нормы", "нужно дозаказать"]
+    unit: number
+    better: lower
+    kind: snapshot
+    source: inventory
+    expression: "COUNT(*) FILTER (WHERE inv.reorder_point IS NOT NULL AND inv.quantity < inv.reorder_point)"
+
+  inventory_turnover_days:
+    label: {ru: "Оборачиваемость запасов, дней", en: "Inventory turnover, days"}
+    description: {ru: "Дней продаж, покрываемых остатком на конец периода: остаток / продажи в ед. × дней в периоде", en: "Days of sales covered by closing stock"}
+    synonyms: ["оборачиваемость", "оборачиваемость запасов", "дней запаса", "inventory turnover"]
+    unit: number
+    better: lower
+    kind: formula
+    formula: "inventory_units / units_sold * period_days"
+
+  receivables_total:
+    label: {ru: "Дебиторская задолженность", en: "Receivables"}
+    description: {ru: "Долг клиентов с НДС на последнюю дату среза в периоде", en: "Customer debt incl. VAT at the latest snapshot"}
+    synonyms: ["задолженность", "дебиторка", "долги клиентов"]
+    unit: currency
+    better: lower
+    kind: snapshot
+    source: receivables
+    expression: "SUM(rc.amount_due)"
+
+  overdue_receivables:
+    label: {ru: "Просроченная задолженность", en: "Overdue receivables"}
+    description: {ru: "Долг клиентов с НДС, срок погашения которого прошёл на дату среза", en: "Customer debt incl. VAT past due at the snapshot date"}
+    synonyms: ["просрочка", "просроченная дебиторка", "overdue"]
+    unit: currency
+    better: lower
+    kind: snapshot
+    source: receivables
+    expression: "COALESCE(SUM(rc.amount_due) FILTER (WHERE rc.due_date < rc.snapshot_date), 0)"
+
+  receivables_turnover_days:
+    label: {ru: "Оборачиваемость дебиторки, дней", en: "Days sales outstanding"}
+    description: {ru: "Задолженность на конец периода / продажи с НДС × дней в периоде", en: "Closing receivables / sales incl. VAT × days"}
+    synonyms: ["оборачиваемость дебиторской задолженности", "dso"]
+    unit: number
+    better: lower
+    kind: formula
+    formula: "receivables_total / (revenue + sales_vat) * period_days"
+
+  payments_received:
+    label: {ru: "Поступления от клиентов", en: "Payments received"}
+    description: {ru: "Оплаты от клиентов с НДС по дате платежа", en: "Customer payments incl. VAT by payment date"}
+    synonyms: ["оплаты", "поступления", "платежи"]
+    unit: currency
+    better: higher
+    kind: simple
+    source: incoming_payments
+    expression: "SUM(pm.amount)"

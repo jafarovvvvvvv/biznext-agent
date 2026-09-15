@@ -11,7 +11,7 @@ import pytest
 from app.agent.date_context import DateContext, today_in
 from app.config import get_settings
 from app.connectors.postgres import PostgresConnector
-from app.semantic.loader import load_semantic
+from app.semantic.sources import load_source_semantic, load_sources
 from app.services.dashboard import DashboardService
 from app.services.insights import InsightsService
 from app.services.metrics import MetricService
@@ -46,13 +46,14 @@ def settings():
 
 @pytest.fixture
 def connector(settings):
-    return PostgresConnector(settings.agent_database_url.get_secret_value(), schema=settings.data_schema)
+    return PostgresConnector(settings.agent_database_url.get_secret_value(), schema="demo")
 
 
 @pytest.fixture
 def metrics(settings, connector):
-    semantic = load_semantic(settings.semantic_dir)
-    executor = SafeSqlExecutor(connector, SqlValidator(allowed_schema=settings.data_schema, max_rows=500),
+    config = load_sources(settings.semantic_dir).sources["demo_postgres"]
+    semantic = load_source_semantic(settings.semantic_dir, config)
+    executor = SafeSqlExecutor(connector, SqlValidator(allowed_schema="demo", max_rows=500),
                                max_rows=500, timeout_ms=settings.sql_statement_timeout_ms)
     return MetricService(semantic, executor)
 

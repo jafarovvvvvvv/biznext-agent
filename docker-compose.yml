@@ -1,5 +1,10 @@
 # BizNext Agent — весь стек поднимается одной командой:  docker compose up -d --build
 # Целевая среда: домашний Linux-сервер. Облака, Kubernetes и managed PostgreSQL не нужны.
+#
+# Сети (§56, docs/CONNECTORS.md):
+#   default    — BizNext: db, backend, web;
+#   enterprise — «сеть предприятия»: 1С (эмулятор onec-demo) и BizNext Connector. У backend и агента
+#                нет маршрута к 1С; коннектор сам отправляет разрешённые данные в BizNext (исходящие запросы).
 name: ${COMPOSE_PROJECT_NAME:-biznext}
 
 services:
@@ -28,7 +33,30 @@ services:
       timeout: 5s
       retries: 20
 
-  # Одноразовый сервис: наполняет схему demo синтетическими данными, если она пуста.
+  # Одноразовый сервис: идемпотентные миграции коннекторов (роль ingest, схема ingest, канонические таблицы).
+  migrate:
+    build: ./database/seed
+    restart: "no"
+    command: ["python", "migrate.py"]
+    environment:
+      SEED_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      APP_DB_USER: ${APP_DB_USER}
+      AGENT_DB_USER: ${AGENT_DB_USER}
+      INGEST_DB_USER: ${INGEST_DB_USER:-biznext_ingest}
+      INGEST_DB_PASSWORD: ${INGEST_DB_PASSWORD:?run scripts/init_env.py --add-missing}
+      CONTRACT_PATH: /contracts/canonical/v1.yaml
+      SOURCES_PATH: /semantic/sources.yaml
+    volumes:
+      - ./contracts:/contracts:ro
+      - ./semantic:/semantic:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Одноразовый сервис: наполняет схему demo синтетическими данными, если она пуста,
+  # и выгружает тот же бизнес как инфобазу 1С для демо-режима коннектора.
   seed:
     build: ./database/seed
     restart: "no"
@@ -41,6 +69,9 @@ services:
       SEED_FORCE: ${SEED_FORCE:-0}
       AGENT_DB_USER: ${AGENT_DB_USER}
       APP_DB_USER: ${APP_DB_USER}
+      ONEC_INFOBASE_PATH: /infobase/demo_1c.sqlite
+    volumes:
+      - onec_infobase:/infobase
     depends_on:
       db:
         condition: service_healthy
@@ -76,11 +107,18 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       INSIGHTS_CACHE_SECONDS: ${INSIGHTS_CACHE_SECONDS:-3600}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # §56: приём данных от коннекторов — отдельная роль БД и токен на каждый источник
+      CONTRACTS_DIR: /app/contracts
+      INGEST_DATABASE_URL: postgresql://${INGEST_DB_USER:-biznext_ingest}:${INGEST_DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      INGEST_TOKENS: onec_demo:${CONNECTOR_TOKEN:-}
     volumes:
       - ./semantic:/app/semantic:ro
+      - ./contracts:/app/contracts:ro
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
     healthcheck:
@@ -99,5 +137,57 @@ services:
       backend:
         condition: service_healthy
 
+  # ---------------------------------------------------------------- «сеть предприятия» (демо-режим 1С)
+
+  # Эмулятор публикации 1С (standard.odata) над выгруженной инфобазой. Только чтение, Basic-аутентификация.
+  onec-demo:
+    build: ./onec_demo
+    restart: unless-stopped
+    environment:
+      ONEC_INFOBASE_PATH: /infobase/demo_1c.sqlite
+      ONEC_DEMO_USER: ${ONEC_DEMO_USER:-biznext_reader}
+      ONEC_DEMO_PASSWORD: ${ONEC_DEMO_PASSWORD:?run scripts/init_env.py --add-missing}
+    volumes:
+      - onec_infobase:/infobase:ro
+    networks: [enterprise]
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # BizNext Connector: читает 1С через OData под read-only пользователем и отправляет канонические
+  # данные в BizNext ingest API. В реальном внедрении ставится на сервер внутри сети предприятия.
+  connector:
+    build:
+      context: .
+      dockerfile: connector/Dockerfile
+    restart: unless-stopped
+    environment:
+      BIZNEXT_URL: http://backend:8000
+      CONNECTOR_TOKEN: ${CONNECTOR_TOKEN:?run scripts/init_env.py --add-missing}
+      ONEC_ODATA_URL: http://onec-demo:8080/demo_foods/odata/standard.odata
+      ONEC_USER: ${ONEC_DEMO_USER:-biznext_reader}
+      ONEC_PASSWORD: ${ONEC_DEMO_PASSWORD}
+      CONNECTOR_TIMEZONE: ${APP_TIMEZONE:-Asia/Almaty}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-30}
+      FULL_SYNC_TIME: ${FULL_SYNC_TIME:-03:40}
+      CONNECTOR_EXCLUDE_FIELDS: ${CONNECTOR_EXCLUDE_FIELDS:-customers.tax_id,suppliers.tax_id}
+    networks: [default, enterprise]
+    depends_on:
+      backend:
+        condition: service_healthy
+      onec-demo:
+        condition: service_healthy
+
+networks:
+  default:
+  enterprise:
+    internal: true
+
 volumes:
   pgdata:
+  onec_infobase:

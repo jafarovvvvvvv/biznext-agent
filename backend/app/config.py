@@ -18,6 +18,10 @@ def _default_semantic_dir() -> str:
     return str(Path(__file__).resolve().parents[2] / "semantic")
 
 
+def _default_contracts_dir() -> str:
+    return str(Path(__file__).resolve().parents[2] / "contracts")
+
+
 class Settings(BaseSettings):
     """All runtime configuration comes from environment variables (see .env.example)."""
 
@@ -30,6 +34,12 @@ class Settings(BaseSettings):
     data_schema: str = "demo"
     semantic_dir: str = Field(default_factory=_default_semantic_dir)
     app_timezone: str = "Asia/Almaty"
+
+    # §56 data connectors: canonical contract, ingest role and per-source connector tokens ("source_id:token,…")
+    contracts_dir: str = Field(default_factory=_default_contracts_dir)
+    ingest_database_url: SecretStr = SecretStr("")
+    ingest_tokens: SecretStr = SecretStr("")
+    ingest_max_chunk_records: int = 5000
 
     llm_provider: str = "anthropic"
     llm_model: str = "claude-opus-5"
@@ -78,7 +88,10 @@ class Settings(BaseSettings):
     def secret_values(self) -> list[str]:
         """Values that must never appear in logs."""
         secrets = [self.llm_api_key_value, self.admin_token_value]
-        for url in (self.database_url.get_secret_value(), self.agent_database_url.get_secret_value()):
+        for item in self.ingest_tokens.get_secret_value().split(","):
+            secrets.append(item.partition(":")[2].strip())
+        for url in (self.database_url.get_secret_value(), self.agent_database_url.get_secret_value(),
+                    self.ingest_database_url.get_secret_value()):
             password = dsn_password(url)
             if password:
                 secrets.append(password)

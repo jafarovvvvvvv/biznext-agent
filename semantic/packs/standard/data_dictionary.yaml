@@ -1,0 +1,74 @@
+# Словарь канонических данных (contracts/canonical/v1.yaml). Описания колонок приходят из COMMENT ON,
+# которые migrate создаёт по контракту; здесь — смысл таблиц и значения перечислений.
+version: 1
+schema: "${schema}"
+
+tables:
+  products:
+    description: {ru: "Номенклатура: товары, материалы, услуги", en: "Products, materials and services"}
+    grain: {ru: "одна строка = одна позиция номенклатуры"}
+    business_meaning: {ru: "Готовая продукция (item_type = goods) продаётся клиентам; материалы (item_type = material) закупаются для производства. category — товарная категория или вид материала."}
+    columns:
+      item_type:
+        values: {goods: {ru: "товар / готовая продукция"}, material: {ru: "сырьё, ингредиенты, упаковка"}, service: {ru: "услуга"}}
+
+  customers:
+    description: {ru: "Клиенты", en: "Customers"}
+    grain: {ru: "одна строка = один клиент"}
+    business_meaning: {ru: "Регион продаж — регион клиента; segment — группа клиентов в учётной системе."}
+
+  suppliers:
+    description: {ru: "Поставщики", en: "Suppliers"}
+    grain: {ru: "одна строка = один поставщик"}
+
+  warehouses:
+    description: {ru: "Склады", en: "Warehouses"}
+    grain: {ru: "одна строка = один склад"}
+
+  employees:
+    description: {ru: "Сотрудники (без окладов и персональных данных)", en: "Employees (no salaries or personal data)"}
+    grain: {ru: "одна строка = один сотрудник"}
+
+  sales:
+    description: {ru: "Строки документов продажи и возврата от клиентов", en: "Sales and customer return lines"}
+    grain: {ru: "одна строка = товар в проведённом документе"}
+    business_meaning: {ru: "Выручка — amount строк operation = 'sale' (без НДС). Возвраты — строки operation = 'return', в выручку не входят. Заказ = document_id. cost_amount — себестоимость из учётной системы."}
+    columns:
+      operation:
+        values: {sale: {ru: "продажа"}, return: {ru: "возврат от клиента"}}
+
+  purchases:
+    description: {ru: "Строки документов поступления от поставщиков", en: "Supplier receipt lines"}
+    grain: {ru: "одна строка = позиция в проведённом документе поступления"}
+    business_meaning: {ru: "Закупочная цена единицы = amount / quantity. Материалы и товары различаются по products.item_type."}
+
+  production:
+    description: {ru: "Строки документов выпуска продукции", en: "Production output lines"}
+    grain: {ru: "одна строка = продукция в документе выпуска"}
+    business_meaning: {ru: "quantity — выпуск, включая брак; planned_quantity и defect_quantity заполнены, если предприятие ведёт план и брак в учётной системе."}
+
+  payments:
+    description: {ru: "Платежи по строкам расшифровки", en: "Payment lines"}
+    grain: {ru: "одна строка = оплата одного документа"}
+    business_meaning: {ru: "Суммы с НДС. settlement_document_id — оплаченный документ продажи."}
+    columns:
+      direction:
+        values: {incoming: {ru: "поступление"}, outgoing: {ru: "списание"}}
+
+  costs:
+    description: {ru: "Прочие (операционные) расходы", en: "Operating costs"}
+    grain: {ru: "одна строка = расход по статье"}
+
+  write_offs:
+    description: {ru: "Списания товаров", en: "Write-offs"}
+    grain: {ru: "одна строка = товар в документе списания"}
+
+  inventory:
+    description: {ru: "Остатки на складах на конец дня", en: "End-of-day stock"}
+    grain: {ru: "одна строка = склад × товар × дата среза"}
+    business_meaning: {ru: "Текущие остатки — строки с максимальной snapshot_date. Срезы: ежедневно за последние ~2 месяца и на конец каждого месяца ранее. reorder_point — минимальный запас (норматив)."}
+
+  receivables:
+    description: {ru: "Открытая задолженность клиентов по документам", en: "Open customer receivables"}
+    grain: {ru: "одна строка = неоплаченный документ продажи на дату среза"}
+    business_meaning: {ru: "Суммы с НДС. Срезы: на конец каждого месяца и на текущую дату. Просрочка — due_date раньше snapshot_date."}

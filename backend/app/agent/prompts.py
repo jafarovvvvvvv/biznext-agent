@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.semantic.loader import SemanticLayer
+from app.semantic.sources import SourceConfig
 
 AGENT_RULES = """\
 You are BizNext Agent, an AI data analyst for the management of the company described below. Executives ask \
@@ -50,7 +51,7 @@ Use null for table/chart when they add nothing.
 """
 
 
-def build_system_prompt(semantic: SemanticLayer, lang: str = "ru") -> str:
+def build_system_prompt(semantic: SemanticLayer, lang: str = "ru", source: SourceConfig | None = None) -> str:
     ctx = semantic.business_context
     parts = [AGENT_RULES, "\n# Company"]
     parts.append(f"{ctx.company.name.get(lang)} — {ctx.company.industry.get(lang) if ctx.company.industry else ''}")
@@ -71,6 +72,13 @@ def build_system_prompt(semantic: SemanticLayer, lang: str = "ru") -> str:
         parts.append(f"- {key} ({metric.label.get(lang)}, {metric.unit}): {description}. group_by: {dims}")
     tables = ", ".join(semantic.data_dictionary.tables) or "see get_database_schema"
     parts.append(f"\n# Database\nSchema `{semantic.data_dictionary.schema_name}`, tables: {tables}.")
+    if source is not None:
+        parts.append(f"\n# Data source\n{source.name.get(lang)}"
+                     + (f": {source.description.get(lang)}" if source.description else ""))
+        if source.storage == "canonical":
+            parts.append("Tables follow the BizNext canonical data contract (synchronized from the company's accounting "
+                         "system by a read-only connector). Only these tables exist; if a question needs data that is "
+                         "not in them (e.g. downtime, plans, market share), answer insufficient_data.")
     return "\n".join(parts)
 
 

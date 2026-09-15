@@ -1,0 +1,74 @@
+# Контекст предприятия для источника «1С (демо-режим)». Метрики, словарь, дашборд и инсайты —
+# из стандартного пакета semantic/packs/standard (общие для любого источника).
+version: 1
+
+company:
+  name: {ru: "Demo Foods", en: "Demo Foods"}
+  industry: {ru: "Молочное производство", en: "Dairy manufacturing"}
+  description:
+    ru: >-
+      Вымышленный средний молочный завод в Казахстане (демо, синтетические данные). Данные получены из
+      учётной системы 1С через BizNext Connector (только чтение) и приведены к каноническим сущностям:
+      номенклатура, клиенты, поставщики, склады, продажи, закупки, производство, остатки, платежи, расходы,
+      списания, задолженность клиентов.
+    en: >-
+      A fictional mid-size dairy plant in Kazakhstan (demo, synthetic data). Data comes from the 1C accounting
+      system through the read-only BizNext Connector and is normalized into canonical entities.
+
+currency:
+  code: KZT
+  symbol: "₸"
+  amounts_note:
+    ru: "Суммы в тенге. amount и cost_amount — без НДС; платежи и задолженность клиентов — с НДС (как в 1С)"
+    en: "Amounts in KZT. amount and cost_amount exclude VAT; payments and receivables include VAT (as in 1C)"
+
+timezone: Asia/Almaty
+week_starts_on: monday
+
+glossary:
+  - term: {ru: "прибыль", en: "profit"}
+    meaning:
+      ru: "Без уточнения — операционная прибыль (operating_profit) = валовая прибыль − операционные расходы − списания. Всегда называй, какую прибыль посчитал."
+      en: "Without qualification means operating profit (operating_profit). Always state which profit was used."
+  - term: {ru: "выручка, продажи, сколько продали", en: "revenue, sales, how much we sold"}
+    meaning:
+      ru: "Сумма amount строк sales с operation = 'sale' (без НДС), по дате документа (метрика revenue). «Сколько продали» — это прежде всего выручка в тенге; количество единиц и число продаж показывай дополнительно. Возвраты — отдельно (returns_amount)."
+      en: "Sum of sales.amount where operation = 'sale' (excl. VAT) by document date (revenue). 'How much did we sell' means revenue in money first; add units and number of sales. Returns are separate."
+  - term: {ru: "клиенты перестали покупать", en: "customers stopped buying"}
+    meaning:
+      ru: "Клиенты, которые регулярно покупали в предыдущие 2–3 месяца, но не покупали в последние 30 дней, а также клиенты, резко прекратившие покупки отдельной категории. Показывай, сколько выручки они давали раньше и дату последней покупки."
+      en: "Customers who bought regularly in the previous 2–3 months but not in the last 30 days, and customers who stopped buying a category. Show their past revenue and last purchase date."
+  - term: {ru: "маржа", en: "margin"}
+    meaning:
+      ru: "Без уточнения — валовая маржа (gross_margin_pct)."
+      en: "Without qualification means gross margin (gross_margin_pct)."
+  - term: {ru: "себестоимость", en: "cost of goods"}
+    meaning:
+      ru: "cost_amount строк продаж — себестоимость из регистра себестоимости 1С. Себестоимость единицы товара = cost_amount / quantity. Рост закупочных цен сырья виден в purchases (amount / quantity по материалу)."
+      en: "sales.cost_amount from the 1C cost register; unit cost = cost_amount / quantity. Raw material price growth is visible in purchases."
+  - term: {ru: "сырьё", en: "raw materials"}
+    meaning:
+      ru: "Материалы — products.item_type = 'material'. Основное сырьё — «Молоко сырое»."
+      en: "Materials are products.item_type = 'material'. The main raw material is «Молоко сырое» (raw milk)."
+  - term: {ru: "остатки", en: "stock"}
+    meaning:
+      ru: "inventory — остатки на конец дня; текущие — максимальная snapshot_date. Минимальный запас — reorder_point."
+      en: "inventory — end-of-day stock; current stock is the latest snapshot_date; reorder_point is the minimum stock."
+  - term: {ru: "дебиторка, долги клиентов", en: "receivables"}
+    meaning:
+      ru: "receivables — открытые долги по документам на дату среза (с НДС); просрочка — due_date раньше snapshot_date."
+      en: "receivables — open debts by document at the snapshot date (incl. VAT); overdue when due_date < snapshot_date."
+  - term: {ru: "оборачиваемость", en: "turnover"}
+    meaning:
+      ru: "Оборачиваемость запасов в днях — inventory_turnover_days; дебиторки — receivables_turnover_days."
+      en: "Inventory turnover in days — inventory_turnover_days; DSO — receivables_turnover_days."
+
+analysis_guidelines:
+  - ru: "Текущий месяц неполный: сравнивай его с тем же числом дней прошлого месяца или явно предупреждай о неполном периоде."
+    en: "The current month is incomplete: compare with the same number of days of the previous month or warn about it."
+  - ru: "Причины изменения прибыли раскладывай на выручку, себестоимость (цены сырья из purchases), операционные расходы по статьям и списания."
+    en: "Break profit changes into revenue, cost of goods (raw material prices from purchases), operating costs by item and write-offs."
+  - ru: "В 1С предприятия не ведутся простои линий и план продаж — на такие вопросы честно отвечай, что данных нет."
+    en: "The enterprise does not keep line downtime or sales plans in 1C — say honestly that this data is not available."
+  - ru: "Данные синхронизируются коннектором каждые 30 минут; упоминай возможную задержку только в ответах про сегодняшний день."
+    en: "Data is synchronized every 30 minutes; mention a possible delay only when answering about today."

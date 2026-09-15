@@ -41,11 +41,13 @@ class ApiError(Exception):
 
 
 class AskService:
-    def __init__(self, *, agent: DataAgent, store: AppStore, provider: LLMProvider, history_turns: int) -> None:
+    def __init__(self, *, agent: DataAgent, store: AppStore, provider: LLMProvider, history_turns: int,
+                 source_id: str = "demo_postgres") -> None:
         self.agent = agent
         self.store = store
         self.provider = provider
         self.history_turns = history_turns
+        self.source_id = source_id
 
     async def ask(self, question: str, conversation_id: str | None, lang: str, today: date,
                   emit: EventEmitter | None = None) -> dict[str, Any]:
@@ -58,7 +60,7 @@ class AskService:
         if conversation_id and not await self.store.conversation_exists(conversation_id):
             conversation_id = None
         if conversation_id is None:
-            conversation_id = await self.store.create_conversation(question[:80])
+            conversation_id = await self.store.create_conversation(question[:80], self.source_id)
         history = [self._history_turn(r) for r in
                    await self.store.recent_assistant_responses(conversation_id, self.history_turns)]
         await self.store.add_message(conversation_id, "user", question)
@@ -67,7 +69,8 @@ class AskService:
         message_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc)
         if emit:
-            await emit("start", {"trace_id": trace_id, "conversation_id": conversation_id, "message_id": message_id})
+            await emit("start", {"trace_id": trace_id, "conversation_id": conversation_id, "message_id": message_id,
+                                 "source_id": self.source_id})
 
         async def emit_step(step: dict[str, Any]) -> None:
             if emit:
@@ -78,6 +81,7 @@ class AskService:
 
         trace = {
             "trace_id": trace_id, "conversation_id": conversation_id, "message_id": message_id, "question": question,
+            "source_id": self.source_id,
             "status": run.status, "provider": self.provider.name, "model": self.provider.model,
             "created_at": created_at, "execution_ms": run.execution_ms, "llm_calls": run.llm_calls,
             "tool_calls": run.tool_calls, "sql_count": run.sql_count, "retry_count": run.retry_count,
@@ -89,7 +93,7 @@ class AskService:
             code = run.error_code or "internal_error"
             message = error_message(code, lang)
             failed = {"message_id": message_id, "conversation_id": conversation_id, "trace_id": trace_id,
-                      "question": question, "status": "error", "summary": message, "answer": message,
+                      "source_id": self.source_id, "question": question, "status": "error", "summary": message, "answer": message,
                       "highlights": [], "metrics": [], "table": None, "chart": None,
                       "sources": {"tables": [], "metrics": []}, "sql": [], "limitations": None,
                       "follow_up_questions": [], "execution_ms": run.execution_ms,
@@ -99,7 +103,7 @@ class AskService:
             raise ApiError(503 if code != "internal_error" else 500, code, message, trace_id)
 
         response = {"message_id": message_id, "conversation_id": conversation_id, "trace_id": trace_id,
-                    "question": question, **run.response, "execution_ms": run.execution_ms,
+                    "source_id": self.source_id, "question": question, **run.response, "execution_ms": run.execution_ms,
                     "created_at": created_at.isoformat(timespec="seconds")}
         trace["final_response"] = response
         await self._save(conversation_id, message_id, trace_id, response["answer"], response, trace)

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import get_container, require_admin
 from app.connectors.base import DatabaseUnavailableError
-from app.container import Container
+from app.container import Container, Services
 from app.services.ask import ApiError, error_message
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,20 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     conversation_id: str | None = None
     lang: Literal["ru", "en"] = "ru"
+    source_id: str | None = Field(default=None, max_length=64)
+
+
+async def _services_for(body: AskRequest, container: Container) -> Services:
+    """A follow-up stays in the data source of its conversation; a new conversation uses the requested source."""
+    source_id = body.source_id
+    if body.conversation_id:
+        try:
+            exists, conversation_source = await container.store.conversation_source(body.conversation_id)
+        except DatabaseUnavailableError as exc:
+            raise ApiError(503, "database_unavailable", error_message("database_unavailable", body.lang)) from exc
+        if exists:
+            source_id = conversation_source or container.default_source_id
+    return container.require(source_id)
 
 
 def _store_errors(exc: Exception) -> ApiError:
@@ -35,7 +49,7 @@ def _store_errors(exc: Exception) -> ApiError:
 
 @router.post("/agent/ask")
 async def ask(body: AskRequest, container: Container = Depends(get_container)) -> dict[str, Any]:
-    services = container.require()
+    services = await _services_for(body, container)
     try:
         return await services.ask.ask(body.question, body.conversation_id, body.lang, container.today())
     except DatabaseUnavailableError as exc:
@@ -44,7 +58,7 @@ async def ask(body: AskRequest, container: Container = Depends(get_container)) -
 
 @router.post("/agent/ask/stream")
 async def ask_stream(body: AskRequest, container: Container = Depends(get_container)) -> StreamingResponse:
-    services = container.require()
+    services = await _services_for(body, container)
     queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
 
     async def emit(event: str, data: dict[str, Any]) -> None:

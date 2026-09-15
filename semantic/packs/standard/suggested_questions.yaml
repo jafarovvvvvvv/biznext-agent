@@ -1,0 +1,13 @@
+# Стандартные вопросы руководителя — работают на любом источнике с каноническими данными.
+version: 1
+questions:
+  - {category: factual, text: {ru: "Сколько продали сегодня?", en: "How much did we sell today?"}}
+  - {category: ranking, text: {ru: "Какие товары дают 80% прибыли?", en: "Which products generate 80% of profit?"}}
+  - {category: causal, text: {ru: "Почему прибыль в этом месяце ниже прошлого?", en: "Why is profit this month lower than last month?"}}
+  - {category: inventory, text: {ru: "Какие остатки скоро закончатся?", en: "Which stock will run out soon?"}}
+  - {category: customers, text: {ru: "Какие клиенты перестали покупать?", en: "Which customers stopped buying?"}}
+  - {category: cost, text: {ru: "Какая себестоимость выросла сильнее всего?", en: "Which cost increased the most?"}}
+  - {category: attention, text: {ru: "Что сейчас требует моего внимания?", en: "What needs my attention right now?"}}
+  - {category: finance, text: {ru: "Какая дебиторская задолженность и сколько просрочено?", en: "What are receivables and how much is overdue?"}}
+  - {category: comparison, text: {ru: "Сравни выручку: {last_month} против {month_before_last}", en: "Compare revenue for {last_month} with {month_before_last}"}}
+  - {category: inventory, text: {ru: "Какая оборачиваемость запасов по категориям за {last_month}?", en: "What is inventory turnover by category in {last_month}?"}}

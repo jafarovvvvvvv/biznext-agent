@@ -10,6 +10,7 @@ import type {
   InsightsResponse,
   MetaResponse,
   ReportsResponse,
+  SourceInfo,
   SourceTablesResponse,
   SuggestedQuestionsResponse,
   TraceDetail,
@@ -22,40 +23,68 @@ export const queryKeys = {
   reports: ["reports"] as const,
 };
 
-export function useMeta() {
+/** Список источников и источник по умолчанию (meta без выбора источника). */
+export function useSourcesMeta() {
   const { lang } = useI18n();
   return useQuery({
-    queryKey: ["meta", lang],
+    queryKey: ["meta", "", lang],
     queryFn: ({ signal }) => apiGet<MetaResponse>("/meta", { signal, query: { lang } }),
     staleTime: 60_000,
   });
 }
 
+/** Активный источник: выбранный пользователем, если он существует, иначе источник по умолчанию. */
+export function useActiveSource(): { sourceId: string; ready: boolean; source: SourceInfo | undefined; sources: SourceInfo[] } {
+  const { sourceId } = useSettings();
+  const base = useSourcesMeta();
+  const sources = base.data?.sources ?? [];
+  const selected = sources.find((s) => s.id === sourceId) ?? sources.find((s) => s.is_default);
+  return { sourceId: selected?.id ?? "", ready: !base.isLoading, source: selected, sources };
+}
+
+export function useMeta() {
+  const { lang } = useI18n();
+  const { sourceId, ready } = useActiveSource();
+  return useQuery({
+    queryKey: ["meta", sourceId, lang],
+    queryFn: ({ signal }) => apiGet<MetaResponse>("/meta", { signal, query: { lang, source: sourceId } }),
+    staleTime: 60_000,
+    enabled: ready,
+  });
+}
+
 export function useDashboard(period: string | null) {
   const { lang } = useI18n();
+  const { sourceId, ready } = useActiveSource();
   return useQuery({
-    queryKey: ["dashboard", period, lang],
-    queryFn: ({ signal }) => apiGet<DashboardResponse>("/dashboard", { signal, query: { period, lang } }),
+    queryKey: ["dashboard", sourceId, period, lang],
+    queryFn: ({ signal }) => apiGet<DashboardResponse>("/dashboard", { signal, query: { period, lang, source: sourceId } }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
+    enabled: ready,
   });
 }
 
 export function useInsights(period: string | null) {
   const { lang } = useI18n();
+  const { sourceId, ready } = useActiveSource();
   return useQuery({
-    queryKey: ["insights", period, lang],
-    queryFn: ({ signal }) => apiGet<InsightsResponse>("/insights", { signal, query: { period, lang } }),
+    queryKey: ["insights", sourceId, period, lang],
+    queryFn: ({ signal }) => apiGet<InsightsResponse>("/insights", { signal, query: { period, lang, source: sourceId } }),
     staleTime: 5 * 60_000,
+    enabled: ready,
   });
 }
 
-export function useSuggestedQuestions() {
+export function useSuggestedQuestions(source?: string | null) {
   const { lang } = useI18n();
+  const active = useActiveSource();
+  const sourceId = source ?? active.sourceId;
   return useQuery({
-    queryKey: ["suggested", lang],
-    queryFn: ({ signal }) => apiGet<SuggestedQuestionsResponse>("/suggested-questions", { signal, query: { lang } }),
+    queryKey: ["suggested", sourceId, lang],
+    queryFn: ({ signal }) => apiGet<SuggestedQuestionsResponse>("/suggested-questions", { signal, query: { lang, source: sourceId } }),
     staleTime: 10 * 60_000,
+    enabled: active.ready,
   });
 }
 
@@ -87,6 +116,7 @@ export function useDataSources() {
   return useQuery({
     queryKey: ["data-sources", lang],
     queryFn: ({ signal }) => apiGet<DataSourcesResponse>("/data-sources", { signal, query: { lang } }),
+    refetchInterval: 30_000,
   });
 }
 

@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import agent, dashboard, system
+from app.api import agent, dashboard, ingest, system
 from app.config import APP_NAME, APP_VERSION, get_settings
 from app.container import Container, build_container
 from app.logging_config import configure_logging
@@ -59,7 +59,7 @@ def create_app(container: Container | None = None) -> FastAPI:
         logger.exception("unhandled error", extra={"path": request.url.path})
         return _error(500, "internal_error", "internal error")
 
-    for router in (system.router, agent.router, dashboard.router):
+    for router in (system.router, agent.router, dashboard.router, ingest.router):
         app.include_router(router, prefix="/api")
     return app
 

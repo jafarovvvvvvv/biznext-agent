@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS app.agent_traces (
     error text
 );
 CREATE INDEX IF NOT EXISTS agent_traces_created_idx ON app.agent_traces (created_at DESC);
+ALTER TABLE app.conversations ADD COLUMN IF NOT EXISTS source_id text;
+ALTER TABLE app.agent_traces ADD COLUMN IF NOT EXISTS source_id text;
 """
 
 
@@ -118,11 +120,16 @@ class AppStore:
 
     # ------------------------------------------------------------------ conversations
 
-    async def create_conversation(self, title: str) -> str:
+    async def create_conversation(self, title: str, source_id: str | None = None) -> str:
         conversation_id = str(uuid.uuid4())
-        await self._fetch("INSERT INTO app.conversations (id, title) VALUES (%(id)s, %(title)s)",
-                          {"id": conversation_id, "title": title[:120]})
+        await self._fetch("INSERT INTO app.conversations (id, title, source_id) VALUES (%(id)s, %(title)s, %(source_id)s)",
+                          {"id": conversation_id, "title": title[:120], "source_id": source_id})
         return conversation_id
+
+    async def conversation_source(self, conversation_id: str) -> tuple[bool, str | None]:
+        """(exists, source_id); conversations created before data sources existed have no source (default is used)."""
+        rows = await self._fetch("SELECT source_id FROM app.conversations WHERE id = %(id)s", {"id": conversation_id})
+        return (True, rows[0]["source_id"]) if rows else (False, None)
 
     async def conversation_exists(self, conversation_id: str) -> bool:
         rows = await self._fetch("SELECT 1 AS ok FROM app.conversations WHERE id = %(id)s", {"id": conversation_id})
@@ -144,7 +151,7 @@ class AppStore:
     async def list_conversations(self, limit: int = 100) -> list[dict[str, Any]]:
         rows = await self._fetch(
             """
-            SELECT c.id, c.title, c.created_at, c.updated_at, count(m.id) AS message_count,
+            SELECT c.id, c.title, c.source_id, c.created_at, c.updated_at, count(m.id) AS message_count,
                    (SELECT m2.response ->> 'summary' FROM app.messages m2
                      WHERE m2.conversation_id = c.id AND m2.role = 'assistant'
                      ORDER BY m2.created_at DESC LIMIT 1) AS last_summary
@@ -153,12 +160,12 @@ class AppStore:
             """,
             {"limit": limit},
         )
-        return [{"id": str(r["id"]), "title": r["title"], "created_at": _iso(r["created_at"]),
+        return [{"id": str(r["id"]), "title": r["title"], "source_id": r["source_id"], "created_at": _iso(r["created_at"]),
                  "updated_at": _iso(r["updated_at"]), "message_count": int(r["message_count"]),
                  "last_summary": r["last_summary"]} for r in rows]
 
     async def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
-        rows = await self._fetch("SELECT id, title, created_at FROM app.conversations WHERE id = %(id)s",
+        rows = await self._fetch("SELECT id, title, source_id, created_at FROM app.conversations WHERE id = %(id)s",
                                  {"id": conversation_id})
         if not rows:
             return None
@@ -167,7 +174,8 @@ class AppStore:
             "WHERE conversation_id = %(id)s ORDER BY created_at, role DESC",
             {"id": conversation_id},
         )
-        return {"id": str(rows[0]["id"]), "title": rows[0]["title"], "created_at": _iso(rows[0]["created_at"]),
+        return {"id": str(rows[0]["id"]), "title": rows[0]["title"], "source_id": rows[0]["source_id"],
+                "created_at": _iso(rows[0]["created_at"]),
                 "messages": [{"id": str(m["id"]), "role": m["role"], "content": m["content"],
                               "response": m["response"], "created_at": _iso(m["created_at"])} for m in messages]}
 
@@ -200,6 +208,7 @@ class AppStore:
             response = r["response"] or {}
             reports.append({
                 "message_id": str(r["id"]), "conversation_id": str(r["conversation_id"]),
+                "source_id": response.get("source_id"),
                 "question": response.get("question", ""), "summary": response.get("summary", ""),
                 "status": response.get("status", ""), "has_chart": bool(response.get("chart")),
                 "has_table": bool(response.get("table")), "created_at": _iso(r["created_at"]),
@@ -213,15 +222,16 @@ class AppStore:
         for key in ("steps", "final_response", "grounding"):
             params[key] = Jsonb(json.loads(json.dumps(params.get(key), default=str))) if params.get(key) is not None else None
         params.setdefault("finished_at", datetime.now(timezone.utc))
+        params.setdefault("source_id", None)
         await self._fetch(
             """
             INSERT INTO app.agent_traces (trace_id, conversation_id, message_id, question, status, provider, model,
                 created_at, finished_at, execution_ms, llm_calls, tool_calls, sql_count, retry_count, input_tokens,
-                output_tokens, steps, final_response, grounding, error)
+                output_tokens, steps, final_response, grounding, error, source_id)
             VALUES (%(trace_id)s, %(conversation_id)s, %(message_id)s, %(question)s, %(status)s, %(provider)s, %(model)s,
                 %(created_at)s, %(finished_at)s, %(execution_ms)s, %(llm_calls)s, %(tool_calls)s, %(sql_count)s,
                 %(retry_count)s, %(input_tokens)s, %(output_tokens)s, %(steps)s, %(final_response)s, %(grounding)s,
-                %(error)s)
+                %(error)s, %(source_id)s)
             ON CONFLICT (trace_id) DO NOTHING
             """,
             params,
@@ -230,7 +240,8 @@ class AppStore:
     async def list_traces(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self._fetch(
             """
-            SELECT trace_id, question, status, created_at, execution_ms, llm_calls, tool_calls, sql_count, retry_count
+            SELECT trace_id, question, status, source_id, created_at, execution_ms, llm_calls, tool_calls, sql_count,
+                   retry_count
             FROM app.agent_traces ORDER BY created_at DESC LIMIT %(limit)s
             """,
             {"limit": limit},
@@ -256,5 +267,6 @@ class AppStore:
 
 def _trace_summary(r: dict[str, Any]) -> dict[str, Any]:
     return {"trace_id": str(r["trace_id"]), "question": r["question"], "status": r["status"],
+            "source_id": r.get("source_id"),
             "created_at": _iso(r["created_at"]), "execution_ms": r["execution_ms"], "llm_calls": r["llm_calls"],
             "tool_calls": r["tool_calls"], "sql_count": r["sql_count"], "retry_count": r["retry_count"]}

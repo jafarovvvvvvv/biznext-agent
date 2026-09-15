@@ -284,10 +284,15 @@ def parse_formula(formula: str) -> ast.expr:
     return tree.body
 
 
+# Variables provided by the metric engine itself (not metric keys): number of days in the period
+# or in the time bucket, e.g. turnover in days = stock / units_sold * period_days.
+FORMULA_VARIABLES = ("period_days",)
+
+
 def formula_metric_refs(formula: str) -> list[str]:
     body = parse_formula(formula)
     refs: list[str] = []
     for node in ast.walk(body):
-        if isinstance(node, ast.Name) and node.id not in refs:
+        if isinstance(node, ast.Name) and node.id not in refs and node.id not in FORMULA_VARIABLES:
             refs.append(node.id)
     return refs

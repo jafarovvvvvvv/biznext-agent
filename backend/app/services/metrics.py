@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
+from app.agent.date_context import add_months
 from app.semantic.loader import SemanticLayer
 from app.semantic.models import Metric, MetricSource, parse_formula
 from app.services.formatting import change_pct
@@ -184,6 +185,7 @@ class MetricService:
             body = parse_formula(metric.formula or "")
             for k in keys:
                 env = {c: (r.values.get(k) or 0.0) for c, r in results.items()}
+                env["period_days"] = float(_period_days(k, start, end, granularity))
                 values[k] = _round(_eval(body, env))
         return MetricComputation(key, values, sql, tables)
 
@@ -254,6 +256,20 @@ class MetricService:
                         return date.fromisoformat(str(row["first_date"])[:10]), date.fromisoformat(str(row["last_date"])[:10])
                 return None
         return None
+
+
+def _period_days(key: Key, start: date, end: date, granularity: str | None) -> int:
+    """Days in the requested period, or in the time bucket of a series point (clipped to the period)."""
+    if not granularity or not key[1]:
+        return (end - start).days
+    bucket_start = date.fromisoformat(key[1])
+    if granularity == "day":
+        bucket_end = bucket_start + timedelta(days=1)
+    elif granularity == "week":
+        bucket_end = bucket_start + timedelta(days=7)
+    else:
+        bucket_end = add_months(bucket_start, {"month": 1, "quarter": 3, "year": 12}[granularity])
+    return max((min(bucket_end, end) - max(bucket_start, start)).days, 0)
 
 
 def _dedup_keys(keys: list[Key]) -> list[Key]:

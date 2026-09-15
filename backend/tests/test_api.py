@@ -33,7 +33,7 @@ def make_client(settings: Settings, semantic: SemanticLayer, provider: ScriptedP
     connector = connector or FakeConnector(responder)
     store = InMemoryStore()
     services = build_services(settings, semantic, connector, store, provider)  # type: ignore[arg-type]
-    container = Container(settings, connector, store, provider, services)  # type: ignore[arg-type]
+    container = Container.single(settings, connector, store, provider, services)  # type: ignore[arg-type]
     return TestClient(create_app(container)), store
 
 
@@ -140,10 +140,10 @@ def test_data_sources(settings: Settings, semantic: SemanticLayer) -> None:
     client, _ = make_client(settings, semantic, ScriptedProvider([]))
     with client:
         sources = client.get("/api/data-sources").json()["sources"]
-        tables = client.get("/api/data-sources/postgres-demo/tables").json()["tables"]
+        tables = client.get("/api/data-sources/demo_postgres/tables").json()["tables"]
         assert client.get("/api/data-sources/unknown/tables").status_code == 404
     assert sources[0]["status"] == "connected" and sources[0]["details"]["read_only_user"] == "agent_readonly"
-    assert {s["status"] for s in sources[1:]} == {"coming_soon"} and len(sources) == 7
+    assert {s["status"] for s in sources[1:]} == {"coming_soon"} and len(sources) == 6
     assert tables[0]["columns"]
 
 

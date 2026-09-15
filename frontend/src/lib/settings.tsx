@@ -5,6 +5,9 @@ interface SettingsValue {
   setDevMode: (value: boolean) => void;
   adminToken: string;
   setAdminToken: (value: string) => void;
+  /** Выбранный источник данных; "" — источник по умолчанию. */
+  sourceId: string;
+  setSourceId: (value: string) => void;
 }
 
 const SettingsContext = createContext<SettingsValue | null>(null);
@@ -31,6 +34,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return read("biznext.devMode", "0") === "1";
   });
   const [adminToken, setAdminTokenState] = useState(() => read("biznext.adminToken", ""));
+  const [sourceId, setSourceIdState] = useState(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("source");
+    if (fromUrl) write("biznext.source", fromUrl); // a shared link selects the source for the whole session
+    return fromUrl ?? read("biznext.source", "");
+  });
 
   const setDevMode = useCallback((value: boolean) => {
     setDevModeState(value);
@@ -41,9 +49,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     write("biznext.adminToken", value);
   }, []);
 
+  const setSourceId = useCallback((value: string) => {
+    setSourceIdState(value);
+    write("biznext.source", value);
+  }, []);
+
   const value = useMemo(
-    () => ({ devMode, setDevMode, adminToken, setAdminToken }),
-    [devMode, setDevMode, adminToken, setAdminToken],
+    () => ({ devMode, setDevMode, adminToken, setAdminToken, sourceId, setSourceId }),
+    [devMode, setDevMode, adminToken, setAdminToken, sourceId, setSourceId],
   );
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }

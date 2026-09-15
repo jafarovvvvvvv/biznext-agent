@@ -36,6 +36,17 @@ export interface DateRange {
   end: string;
 }
 
+/** Источник данных, который может анализировать агент (semantic/sources.yaml, §56). */
+export interface SourceInfo {
+  id: string;
+  name: string;
+  type: string;
+  storage: "direct" | "canonical";
+  mode: "live" | "demo";
+  is_default: boolean;
+  available: boolean;
+}
+
 export interface MetaResponse {
   app: string;
   version: string;
@@ -46,6 +57,9 @@ export interface MetaResponse {
   data_range: DateRange | null;
   llm: { provider: string; model: string; configured: boolean };
   features: { admin_token_required: boolean };
+  source: SourceInfo;
+  sources: SourceInfo[];
+  default_source: string;
 }
 
 // ---------- 8.2 Агент ----------
@@ -54,6 +68,8 @@ export interface AskRequest {
   question: string;
   conversation_id: string | null;
   lang: Lang;
+  /** Для нового диалога; продолжение диалога всегда идёт в его источнике. */
+  source_id: string | null;
 }
 
 export type AgentStatus =
@@ -121,6 +137,7 @@ export interface AgentResponse {
   message_id: string;
   conversation_id: string;
   trace_id: string;
+  source_id?: string | null;
   question: string;
   status: AgentStatus;
   summary: string;
@@ -178,6 +195,7 @@ export interface StreamStartEvent {
   trace_id: string;
   conversation_id: string;
   message_id: string;
+  source_id?: string | null;
 }
 
 /** SSE `event: error` */
@@ -192,6 +210,7 @@ export interface StreamErrorEvent {
 export interface ConversationSummary {
   id: string;
   title: string;
+  source_id: string | null;
   created_at: string;
   updated_at: string;
   message_count: number;
@@ -213,6 +232,7 @@ export interface ConversationMessage {
 export interface ConversationDetail {
   id: string;
   title: string;
+  source_id: string | null;
   created_at: string;
   messages: ConversationMessage[];
 }
@@ -314,7 +334,7 @@ export interface InsightsResponse {
 
 // ---------- 8.5 Источники данных ----------
 
-export type DataSourceStatus = "connected" | "error" | "coming_soon";
+export type DataSourceStatus = "connected" | "waiting_for_sync" | "error" | "coming_soon";
 
 export interface DataSourceDetails {
   database: string | null;
@@ -327,13 +347,56 @@ export interface DataSourceDetails {
   checked_at: string;
 }
 
+export interface SyncRun {
+  run_id: string;
+  kind: "full" | "incremental" | "check";
+  status: "running" | "succeeded" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  duration_s: number | null;
+  error: string | null;
+}
+
+export interface SyncEntity {
+  entity: string;
+  label: { ru?: string; en?: string };
+  kind: "catalog" | "document" | "snapshot";
+  rows: number;
+  last_loaded_at: string | null;
+  window: { from: string | null; to: string | null } | null;
+  source_objects: string[];
+  fields: string[];
+  excluded_fields: string[];
+}
+
+/** Состояние коннектора канонического источника (§56). */
+export interface SyncStatus {
+  contract_version: string;
+  ingest_enabled: boolean;
+  connector: {
+    last_seen_at: string | null;
+    system: string | null;
+    configuration: string | null;
+    adapter: string | null;
+    endpoint: string | null;
+    version: string | null;
+    read_only: boolean | null;
+  };
+  runs: SyncRun[];
+  entities: SyncEntity[];
+}
+
 export interface DataSource {
   id: string;
   type: string;
   name: string;
   status: DataSourceStatus | string;
-  description?: string;
+  storage?: "direct" | "canonical";
+  mode?: "live" | "demo";
+  is_default?: boolean;
+  description?: string | null;
   details?: DataSourceDetails;
+  sync?: SyncStatus | null;
 }
 
 export interface DataSourcesResponse {
@@ -362,6 +425,7 @@ export interface SourceTablesResponse {
 export interface TraceSummary {
   trace_id: string;
   question: string;
+  source_id?: string | null;
   status: AgentStatus | string;
   created_at: string;
   execution_ms: number | null;

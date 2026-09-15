@@ -15,7 +15,8 @@ from app.llm.base import LLMMessage, LLMResponse, LLMUsage, ToolCall, ToolSpec
 from app.semantic.loader import SemanticLayer, load_semantic
 
 REPO_SEMANTIC = Path(__file__).resolve().parents[2] / "semantic"
-SEMANTIC_DIR = Path(os.environ.get("SEMANTIC_DIR") or REPO_SEMANTIC)
+SEMANTIC_ROOT = Path(os.environ.get("SEMANTIC_DIR") or REPO_SEMANTIC)
+SEMANTIC_DIR = SEMANTIC_ROOT / "demo_postgres"
 TODAY = date(2026, 9, 14)
 
 
@@ -28,7 +29,7 @@ def semantic() -> SemanticLayer:
 def settings() -> Settings:
     return Settings(
         database_url="postgresql://app:x@localhost/db", agent_database_url="postgresql://agent:x@localhost/db",
-        semantic_dir=str(SEMANTIC_DIR), llm_provider="anthropic", llm_model="claude-opus-5", llm_api_key="test-key",
+        semantic_dir=str(SEMANTIC_ROOT), llm_provider="anthropic", llm_model="claude-opus-5", llm_api_key="test-key",
         agent_max_iterations=6, agent_max_tool_calls=8, agent_max_sql_retries=2, agent_timeout_seconds=30,
     )
 
@@ -44,7 +45,7 @@ def result(rows: list[dict[str, Any]], types: dict[str, str] | None = None) -> Q
 
 
 class FakeConnector:
-    id = "postgres-demo"
+    id = "demo_postgres"
     type = "postgresql"
     name = "PostgreSQL"
     dialect = "postgres"
@@ -140,11 +141,15 @@ class InMemoryStore:
     async def ping(self) -> bool:
         return True
 
-    async def create_conversation(self, title: str) -> str:
+    async def create_conversation(self, title: str, source_id: str | None = None) -> str:
         cid = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        self.conversations[cid] = {"id": cid, "title": title, "created_at": now, "updated_at": now}
+        self.conversations[cid] = {"id": cid, "title": title, "source_id": source_id, "created_at": now, "updated_at": now}
         return cid
+
+    async def conversation_source(self, conversation_id: str) -> tuple[bool, str | None]:
+        found = self.conversations.get(conversation_id)
+        return (True, found["source_id"]) if found else (False, None)
 
     async def conversation_exists(self, conversation_id: str) -> bool:
         return conversation_id in self.conversations

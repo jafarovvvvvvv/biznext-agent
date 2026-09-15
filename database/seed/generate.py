@@ -22,6 +22,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import reference as ref
@@ -886,7 +887,8 @@ def print_stats(gen: Generator) -> None:
 # ----------------------------------------------------------------------------- database load
 
 
-def load(gen: Generator, url: str, force: bool, agent_user: str) -> None:
+def load(gen: Generator, url: str, force: bool, agent_user: str) -> bool:
+    """Load the dataset; returns False when data already exists and SEED_FORCE is off."""
     import psycopg
     from psycopg import sql
 
@@ -906,7 +908,7 @@ def load(gen: Generator, url: str, force: bool, agent_user: str) -> None:
             has_data = cur.fetchone()[0]
             if has_data and not force:
                 print("demo data already present - skipping (set SEED_FORCE=1 to regenerate)")
-                return
+                return False
             if has_data:
                 print("SEED_FORCE=1: truncating demo tables")
             tables = sql.SQL(", ").join(sql.Identifier("demo", t) for t in TABLES_IN_LOAD_ORDER)
@@ -926,6 +928,7 @@ def load(gen: Generator, url: str, force: bool, agent_user: str) -> None:
     with psycopg.connect(url, autocommit=True) as conn:
         conn.execute("ANALYZE")
     print("seed complete")
+    return True
 
 
 def main() -> int:
@@ -950,7 +953,20 @@ def main() -> int:
     if not url:
         print("SEED_DATABASE_URL is not set", file=sys.stderr)
         return 2
-    load(gen, url, force, os.environ.get("AGENT_DB_USER") or "agent_readonly")
+    loaded = load(gen, url, force, os.environ.get("AGENT_DB_USER") or "agent_readonly")
+
+    # demo mode of the 1C connector (§56): the same business published as a 1C infobase snapshot
+    infobase = os.environ.get("ONEC_INFOBASE_PATH", "").strip()
+    if infobase and (loaded or not Path(infobase).exists()):
+        import psycopg
+
+        import onec_export
+
+        started = time.monotonic()
+        with psycopg.connect(url) as conn:
+            counts = onec_export.export(conn, Path(infobase))
+        print(f"1C infobase exported to {infobase} in {time.monotonic() - started:.1f}s "
+              f"({counts.get('Document_РеализацияТоваровУслуг', 0):,d} sales documents)", flush=True)
     return 0
 
 

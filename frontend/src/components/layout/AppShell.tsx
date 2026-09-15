@@ -5,6 +5,7 @@ import { useMeta } from "../../api/hooks";
 import { useI18n } from "../../lib/i18n";
 import { useSettings } from "../../lib/settings";
 import { cx } from "../../lib/ui-utils";
+import { SourceIcon, SourcePicker } from "../SourcePicker";
 
 function Logo() {
   return (
@@ -75,6 +76,10 @@ export function AppShell() {
             <div className="rounded-lg border border-line bg-surface px-3 py-2.5">
               <div className="text-[13px] font-medium text-ink">{meta.data.company.name}</div>
               <div className="text-xs text-muted">{meta.data.company.industry}</div>
+              <div className="mt-2 flex items-center gap-1.5 border-t border-line pt-2 text-[11px] text-muted">
+                <SourceIcon type={meta.data.source.type} className="h-3 w-3" />
+                <span className="truncate">{meta.data.source.name}</span>
+              </div>
             </div>
           )}
           <div className="text-[11px] leading-relaxed text-faint">
@@ -88,21 +93,24 @@ export function AppShell() {
           <div className="md:hidden">
             <Logo />
           </div>
-          <nav className="flex gap-1 overflow-x-auto md:hidden" aria-label="Main mobile">
+          <nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto md:hidden" aria-label="Main mobile">
             {nav.map(({ to, label, end }) => (
               <NavLink key={to} to={to} end={end} className={({ isActive }) => cx("whitespace-nowrap rounded-md px-2 py-1 text-xs", isActive ? "bg-surface font-medium" : "text-muted")}>
                 {label}
               </NavLink>
             ))}
           </nav>
+          <div className="ml-auto shrink-0">
+            <SourcePicker />
+          </div>
           <div
-            className="ml-auto inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning-soft px-3 py-1 text-[11px] font-semibold tracking-wide text-warning"
+            className="hidden shrink-0 items-center gap-2 rounded-full border border-warning/30 bg-warning-soft px-3 py-1 text-[11px] font-semibold tracking-wide text-warning xl:inline-flex"
             title={t("header.demoHint")}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-warning" />
             {t("header.demo")}
           </div>
-          <div className="flex rounded-lg border border-line bg-surface p-0.5 text-xs" role="group" aria-label="Language">
+          <div className="flex shrink-0 rounded-lg border border-line bg-surface p-0.5 text-xs" role="group" aria-label="Language">
             {(["ru", "en"] as const).map((code) => (
               <button
                 key={code}
@@ -115,7 +123,7 @@ export function AppShell() {
               </button>
             ))}
           </div>
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setSettingsOpen((v) => !v)}

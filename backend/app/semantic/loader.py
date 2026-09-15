@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
@@ -80,12 +81,24 @@ class SemanticLayer:
         return dimension
 
 
-def _read_yaml(path: Path) -> object:
-    if not path.is_file():
-        raise SemanticError(f"semantic file not found: {path}")
+_VARIABLE = re.compile(r"\$\{(\w+)\}")
+
+
+def _read_yaml(directories: list[Path], filename: str, variables: dict[str, str]) -> object:
+    """First directory that has the file wins; ${name} placeholders are replaced by source variables."""
+    path = next((d / filename for d in directories if (d / filename).is_file()), None)
+    if path is None:
+        raise SemanticError(f"semantic file not found: {filename} in {', '.join(str(d) for d in directories)}")
+    text = path.read_text(encoding="utf-8")
+
+    def substitute(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name not in variables:
+            raise SemanticError(f"{path.name}: unknown variable ${{{name}}}")
+        return variables[name]
+
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            return yaml.safe_load(handle)
+        return yaml.safe_load(_VARIABLE.sub(substitute, text))
     except yaml.YAMLError as exc:
         raise SemanticError(f"{path.name}: invalid YAML: {exc}") from exc
 
@@ -155,19 +168,28 @@ def _cross_validate(layer: SemanticLayer) -> None:
         raise SemanticError("; ".join(errors))
 
 
-def load_semantic(directory: str | Path) -> SemanticLayer:
-    base = Path(directory)
-    if not base.is_dir():
-        raise SemanticError(f"semantic directory not found: {base}")
+def load_semantic(directories: str | Path | list[str | Path], variables: dict[str, str] | None = None) -> SemanticLayer:
+    """Load and cross-validate a semantic layer.
+
+    `directories` are searched in order per file, so a data source can override parts of a shared
+    pack (e.g. its own business_context.yaml on top of packs/standard).
+    """
+    bases = [Path(d) for d in (directories if isinstance(directories, list) else [directories])]
+    for base in bases:
+        if not base.is_dir():
+            raise SemanticError(f"semantic directory not found: {base}")
+    values = dict(variables or {})
+
+    def read(model: type[M], key: str) -> M:
+        return _validate(model, _read_yaml(bases, FILES[key], values), FILES[key])
+
     layer = SemanticLayer(
-        business_context=_validate(BusinessContext, _read_yaml(base / FILES["business_context"]), FILES["business_context"]),
-        data_dictionary=_validate(DataDictionary, _read_yaml(base / FILES["data_dictionary"]), FILES["data_dictionary"]),
-        metrics=_validate(MetricsCatalog, _read_yaml(base / FILES["metrics"]), FILES["metrics"]),
-        dashboard=_validate(DashboardConfig, _read_yaml(base / FILES["dashboard"]), FILES["dashboard"]),
-        insights=_validate(InsightsConfig, _read_yaml(base / FILES["insights"]), FILES["insights"]),
-        suggested_questions=_validate(
-            SuggestedQuestionsConfig, _read_yaml(base / FILES["suggested_questions"]), FILES["suggested_questions"]
-        ),
+        business_context=read(BusinessContext, "business_context"),
+        data_dictionary=read(DataDictionary, "data_dictionary"),
+        metrics=read(MetricsCatalog, "metrics"),
+        dashboard=read(DashboardConfig, "dashboard"),
+        insights=read(InsightsConfig, "insights"),
+        suggested_questions=read(SuggestedQuestionsConfig, "suggested_questions"),
     )
     _cross_validate(layer)
     return layer
